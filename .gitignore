@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+
+venv/
+.env/
+*.env
+
+.vscode/
+.idea/
+
+images
+model/IdentiFace/Models
