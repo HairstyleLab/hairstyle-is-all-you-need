@@ -70,6 +70,14 @@ def get_facial_data_tool():
 from langchain.agents import tool
 
 @tool
+def hairstyle_recommandation_tool(model, image_path: str) -> str:
+    """이미지를 입력받아 성별, 얼굴형, 피부톤을 분석하고 어울리는 헤어스타일을 문서에서 검색하여 반환하는 도구입니다."""
+    result = stone.process(image_path, image_type="color", return_report_image=False,tone_palette='yadon-ostfeld')
+    skin_tone = result['faces'][0]['dominant_colors'][0]['color']
+    shape, gender = get_face_shape_and_gender(model, image_path)
+    return skin_tone, shape, gender
+
+@tool
 def facial_shape_and_gender_tool(image_path: str) -> str:
     """얼굴형과 성별을 인식하는 도구입니다. 이미지를 입력받아 얼굴형과 성별을 분석합니다."""
     result = []   
