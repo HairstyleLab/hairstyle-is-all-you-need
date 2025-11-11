@@ -15,12 +15,12 @@ def skin_tone_choice(result):
     else:
         return nondominant_result
 
-def hairstyle_recommendation(image_path:str)->tuple:
+def hairstyle_recommendation(model,image_path:str)->str:
     result = stone.process(image_path, image_type="color", return_report_image=False,tone_palette='yadon-ostfeld')
     skin_tone = skin_tone_choice(result)
-    shape, gender = get_face_shape_and_gender(image_path)
+    shape, gender = get_face_shape_and_gender(model,image_path)
     print(skin_tone, shape, gender)
-    return (skin_tone, shape, gender)
+    return f"얼굴색:{skin_tone},얼굴형:{shape},성별:{gender}"
 
 def web_search(query:str)->str:
     TAVILY_API_KEY=os.getenv("TAVILY_API_KEY")
