@@ -2,8 +2,7 @@ import os
 import stone
 from langchain_classic.agents import load_tools
 from langchain_tavily import TavilySearch
-from model.utils import get_face_shape_and_gender
-
+from model.utils import get_face_shape_and_gender, generate_hairstyle
 
 def skin_tone_choice(result):
     dominant_result = tuple(int(result['faces'][0]['dominant_colors'][0]['color'].lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
@@ -21,6 +20,10 @@ def hairstyle_recommendation(model,image_path:str)->str:
     shape, gender = get_face_shape_and_gender(model,image_path)
     print(skin_tone, shape, gender)
     return f"얼굴색:{skin_tone},얼굴형:{shape},성별:{gender}"
+
+def hairstyle_generation(model, face_img, shape_img, color_img):
+    result = generate_hairstyle(model, face_img, shape_img, color_img)
+    return result
 
 def web_search(query:str)->str:
     TAVILY_API_KEY=os.getenv("TAVILY_API_KEY")
