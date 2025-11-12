@@ -13,3 +13,5 @@ venv/
 
 images
 model/IdentiFace/Models
+model/HairFastGAN/input
+model/HairFastGAN/pretrained_models
