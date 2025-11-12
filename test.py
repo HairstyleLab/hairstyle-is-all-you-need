@@ -9,7 +9,8 @@ from model.utils import load_identiface
 import base64
 from langchain_core.messages import HumanMessage
 from PIL import Image
-from model.utils import load_hairfastgan, generate_hairstyle, load_identiface, get_face_shape_and_gender
+# from model.utils import load_hairfastgan, generate_hairstyle
+from model.utils import load_identiface, get_face_shape_and_gender
 
 file_path = "images/face2.jpg"
 face_img = "images/ky.jpg"
@@ -36,7 +37,7 @@ def extract_and_display_image(response,image_path=os.path.abspath("images")):
             filename = f"generated_hairstyle_{i+1}.png"
             img.save(os.path.join(image_path, filename))
             img.show()
-        
+
 def encode_image_from_file(file_path):
     with open(file_path, "rb") as image_file:
         image_content = image_file.read()
@@ -49,9 +50,8 @@ def encode_image_from_file(file_path):
             mime_type = "image/unknown"
         return f"data:{mime_type};base64,{base64.b64encode(image_content).decode('utf-8')}"
 
-
 agent = build_agent(model)
-encoded_image = encode_image_from_file(file_path)
+encoded_image = encode_image(file_path)
 
 print("\n\n" + "=" * 50)
 print("테스트 1: 관련없는 질의")
@@ -93,13 +93,12 @@ response = agent.invoke(
 print("\n응답:")
 print(response['output'])
 
-
 print("\n\n" + "=" * 50)
 print("테스트 5: 이미지 분석")
 response = agent.invoke(
     {"input": [HumanMessage(
         content=[
-            {"type": "text", "text": f"이 이미지를 분석해줘. 정밀 분석이 필요하면 이 base64 데이터를 사용해: {encoded_image}"},
+            {"type": "text", "text": f"이 이미지를 분석해줘. 정밀 분석이 필요하면 지금 들어온 base64 데이터를 사용해"},
             {"type": "image_url", "image_url": {"url": encoded_image}}
         ]
     )]},
@@ -114,7 +113,7 @@ print("테스트 6: DALL-E 이미지 생성")
 response = agent.invoke(
     {"input": [HumanMessage(
         content=[
-            {"type": "text", "text": f"이 이미지에서 헤어스타일만 히피펌으로 바꿔줘. 이 base64 데이터를 사용해: {encoded_image}"},
+            {"type": "text", "text": f"이 이미지에서 헤어스타일만 히피펌으로 바꿔줘. 지금 들어온  base64 데이터를 사용해"},
             {"type": "image_url", "image_url": {"url": encoded_image}}
         ]
     )]},
