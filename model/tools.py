@@ -1,8 +1,10 @@
 import os
+import base64
+import tempfile
 import stone
 from langchain_classic.agents import load_tools
 from langchain_tavily import TavilySearch
-from model.utils import get_face_shape_and_gender, generate_hairstyle
+from model.utils import get_face_shape_and_gender, generate_hairstyle, classify_personal_color
 
 def skin_tone_choice(result):
     dominant_result = tuple(int(result['faces'][0]['dominant_colors'][0]['color'].lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
@@ -14,12 +16,24 @@ def skin_tone_choice(result):
     else:
         return nondominant_result
 
-def hairstyle_recommendation(model,image_path:str)->str:
-    result = stone.process(image_path, image_type="color", return_report_image=False,tone_palette='yadon-ostfeld')
-    skin_tone = skin_tone_choice(result)
-    shape, gender = get_face_shape_and_gender(model,image_path)
-    print(skin_tone, shape, gender)
-    return f"얼굴색:{skin_tone},얼굴형:{shape},성별:{gender}"
+def hairstyle_recommendation(model, image_base64):
+    if image_base64.startswith('data:image'):
+        image_data = base64.b64decode(image_base64.split(',')[1])
+    else:
+        image_data = base64.b64decode(image_base64)
+    
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
+        temp_file.write(image_data)
+        temp_path = temp_file.name
+    
+    try:
+        result = stone.process(temp_path, image_type='color',return_report_image=False,tone_palette='perla')
+        skin_tone = skin_tone_choice(result)
+        personal_color = classify_personal_color(skin_tone)
+        shape, gender = get_face_shape_and_gender(model, temp_path)
+        return f"퍼스널컬러:{personal_color},얼굴형: {shape},성별: {gender}"
+    finally:
+        os.unlink(temp_path)
 
 def hairstyle_generation(model, face_img, shape_img, color_img):
     result = generate_hairstyle(model, face_img, shape_img, color_img)
