@@ -5,7 +5,8 @@ import stone
 import base64
 from langchain_classic.agents import load_tools
 from langchain_tavily import TavilySearch
-from model.utils import get_face_shape_and_gender, generate_hairstyle, classify_personal_color, encode_image, create_file
+# from model.utils import generate_hairstyle
+from model.utils import get_face_shape_and_gender, classify_personal_color
 
 def skin_tone_choice(result):
     dominant_result = tuple(int(result['faces'][0]['dominant_colors'][0]['color'].lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
@@ -72,5 +73,5 @@ def web_search(query:str)->str:
 
 def get_tool_list(*args):
     tools = load_tools(['dalle-image-generator'])
-    tools.extend(list[args])
+    tools.extend(args)
     return tools

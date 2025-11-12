@@ -1,6 +1,6 @@
 import os
 import tensorflow as tf
-from model.HairFastGAN.hair_swap import HairFast, get_parser
+# from model.HairFastGAN.hair_swap import HairFast, get_parser
 from model.IdentiFace.Backend.model_manager import model_manager
 from model.IdentiFace.Backend.functions import Functions
 
