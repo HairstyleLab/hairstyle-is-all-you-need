@@ -2,9 +2,10 @@ import os
 import base64
 import tempfile
 import stone
+import base64
 from langchain_classic.agents import load_tools
 from langchain_tavily import TavilySearch
-from model.utils import get_face_shape_and_gender, generate_hairstyle, classify_personal_color
+from model.utils import get_face_shape_and_gender, generate_hairstyle, classify_personal_color, encode_image, create_file
 
 def skin_tone_choice(result):
     dominant_result = tuple(int(result['faces'][0]['dominant_colors'][0]['color'].lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
@@ -38,6 +39,21 @@ def hairstyle_recommendation(model, image_base64):
 def hairstyle_generation(model, face_img, shape_img, color_img):
     result = generate_hairstyle(model, face_img, shape_img, color_img)
     return result
+
+def generate_image(image_path, client, prompt):
+
+    result = client.images.edit(
+        model="gpt-image-1",
+        image=[
+            open(image_path, "rb"),
+        ],
+        prompt=prompt
+    )
+
+    image_base64 = result.data[0].b64_json
+    image_bytes = base64.b64decode(image_base64)
+
+    return image_bytes
 
 def web_search(query:str)->str:
     TAVILY_API_KEY=os.getenv("TAVILY_API_KEY")
