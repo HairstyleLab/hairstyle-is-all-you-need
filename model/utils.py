@@ -1,7 +1,18 @@
 import os
-import tensorflow as tf 
+import tensorflow as tf
+from model.HairFastGAN.hair_swap import HairFast, get_parser
 from model.IdentiFace.Backend.model_manager import model_manager
 from model.IdentiFace.Backend.functions import Functions
+
+def load_hairfastgan():
+    model = HairFast(get_parser().parse_args([]))
+
+    return model
+
+def generate_hairstyle(model, face_img, shape_img, color_img):
+    result = model(face_img, shape_img, color_img)
+
+    return result
 
 def load_identiface():
     print("Loading models...")

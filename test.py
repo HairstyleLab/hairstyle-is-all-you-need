@@ -9,19 +9,23 @@ from model.utils import load_identiface
 import base64
 from langchain_core.messages import HumanMessage
 from PIL import Image
+from model.utils import load_hairfastgan, generate_hairstyle, load_identiface, get_face_shape_and_gender
 
+file_path = "images/face2.jpg"
+face_img = "images/ky.jpg"
+shape_img = "images/ew.jpg"
+color_img = "images/gd.jpg"
 
+# model = load_hairfastgan()
+# result = generate_hairstyle(model, face_img, shape_img, color_img)
 
-# 환경 변수 로드
+model = load_identiface()
+predicted_shape, shape_probs = get_face_shape_and_gender(model, file_path)
+
 load_dotenv()
 
-# 이미지 경로 설정
-file_path = os.path.abspath("images/face1.jpg")
-
-# 이미지 추출 및 표시 함수
 def extract_and_display_image(response,image_path=os.path.abspath("images")):
     output = response.get('output', '')
-    
     url_pattern = r'https://oaidalleapiprodscus[^\s\)]+\.png[^\s\)]*'
     urls = re.findall(url_pattern, output)
     
@@ -29,13 +33,10 @@ def extract_and_display_image(response,image_path=os.path.abspath("images")):
         for i, url in enumerate(urls):
             img_response = requests.get(url)
             img = Image.open(BytesIO(img_response.content))
-            
             filename = f"generated_hairstyle_{i+1}.png"
             img.save(os.path.join(image_path, filename))
-            
             img.show()
         
-# 이미지 인코딩 함수
 def encode_image_from_file(file_path):
     with open(file_path, "rb") as image_file:
         image_content = image_file.read()
@@ -49,11 +50,9 @@ def encode_image_from_file(file_path):
         return f"data:{mime_type};base64,{base64.b64encode(image_content).decode('utf-8')}"
 
 
-model = load_identiface()
 agent = build_agent(model)
 encoded_image = encode_image_from_file(file_path)
 
-#테스트1
 print("\n\n" + "=" * 50)
 print("테스트 1: 관련없는 질의")
 print("=" * 50)
@@ -64,7 +63,6 @@ response = agent.invoke(
 print("\n응답:")
 print(response['output'])
 
-#테스트2
 print("\n\n" + "=" * 50)
 print("테스트 2: 일반 헤어스타일 추천")
 print("=" * 50)
@@ -75,7 +73,6 @@ response = agent.invoke(
 print("\n응답:")
 print(response['output'])
 
-#테스트3
 print("\n\n" + "=" * 50)
 print("테스트 3: 겨울 헤어스타일 추천")
 print("=" * 50)
@@ -86,7 +83,6 @@ response = agent.invoke(
 print("\n응답:")
 print(response['output'])
 
-#테스트4
 print("\n\n" + "=" * 50)
 print("테스트 4: 존재하지 않는 헤어스타일")
 print("=" * 50)
@@ -98,7 +94,6 @@ print("\n응답:")
 print(response['output'])
 
 
-#테스트5
 print("\n\n" + "=" * 50)
 print("테스트 5: 이미지 분석")
 response = agent.invoke(
@@ -114,7 +109,6 @@ print("\n응답:")
 print(response['output'])
 print("\n\n테스트 완료!")
 
-#테스트6
 print("\n\n" + "=" * 50)
 print("테스트 6: DALL-E 이미지 생성")
 response = agent.invoke(
@@ -134,3 +128,4 @@ extract_and_display_image(response)
 
 
 print("\n\n테스트 완료!")
+
