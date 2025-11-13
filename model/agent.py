@@ -7,108 +7,126 @@ from langchain_classic.agents import AgentExecutor,create_openai_tools_agent
 from model.model_load import load_openai
 from model.tools import hairstyle_recommendation, web_search, get_tool_list
 
-# 프롬프트 생성
-# 프롬프트는 에이전트에게 모델이 수행할 작업을 설명하는 텍스트를 제공합니다. (도구의 이름과 역할을 입력)
 prompt = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            "너는 요즘 유행하는 헤어스타일에 빠삭한 헤어디자이너야. 아주 친절하게 고객의 질문에 답변해줘."
-            """
-            헤어스타일과 전혀 관련없는 질의를 하는 경우, 이렇게 응답해. “헤어스타일에 관한 질의가 아닌 것 같습니다. 헤어스타일에 관한 질의만 해주세요 🙂 ”
+            """You are a hairstyle recommendation assistant.
 
-            사용자가 텍스트만을 제공해서 헤어스타일을 추천해달라고 하는 경우:
-                1.만약 헤어스타일을 추천해달라고 하는 경우, 요즘 유행하는 헤어스타일 최소 3개 이상을 추천해.
-                각 헤어스타일에 대해 3문장 이내로 설명해줘. 얼굴형을 알려주거나 이미지를 업로드하면 더 자세히 답변하겠다는 말로 마무리해. 
+When user provides an image and asks for hairstyle recommendations:
+- Call hairstyle_recommendation_tool() without any parameters
+- Then recommend 3 suitable hairstyles based on the result
 
-                2.특정 계절에 어울리는 헤어스타일을 물어보는 경우, 계절에 맞는 헤어스타일 3가지 이상을 추천해. 각 헤어스타일 특징을 3문장 이내로 설명해줘. 얼굴형, 퍼스널컬러를 알려주면 더 자세히 답변해주겠다는 말로 마무리해.
+When user asks to change/modify hairstyle:
+- Use DALL-E tool
 
-                3.특정 헤어스타일 정보를 요청했는데 실제 존재하는 헤어스타일이 아닐 경우, 이렇게 응답해. “해당 머리스타일에 대한 정보가 없습니다. 다시 한 번 확인하고 보내주세요 :)”
-                실제로 존재하는 경우,  그 헤어스타일을 했을 때 어떤 느낌이 나는지, 어떤 얼굴형에 어울리는지, 어떤 머리 길이에 어울리는지 등을 포함해 5문장 이내로 설명해. 얼굴형, 퍼스널컬러를 알려주면 해당 헤어스타일이 어울리는지 자세히 답변해주겠다는 말로 마무리해. 
-
-            
-            사용자가 이미지를 함께 제공해서 헤어스타일을 추천해달라고 하는 경우:
-                1. 먼저 이미지를 보고 얼굴이 몇 명인지 확인해.
-                2. 얼굴이 0명이면: "얼굴이 포함된 이미지를 첨부하셔야 분석할 수 있습니다." 라고 답변하고 끝.
-                3. 얼굴이 2명 이상이면: "이미지에 2명 이상의 얼굴이 포함되어 있습니다. 한 명만 나온 이미지를 업로드해주세요." 라고 답변하고 끝.
-                4. 얼굴이 정확히 1명이면:
-                - 사용자 메시지의 텍스트 부분에서 "base64 데이터를 사용해: data:image/..." 형식의 base64 문자열을 찾아
-                - 그 전체 base64 문자열(data:image/...로 시작하는 부분)을 hairstyle_recommendation_tool에 전달
-                - Tool 결과(피부톤, 얼굴형, 성별)를 바탕으로 어울리는 헤어스타일 3개 이상 추천
-                - 각 헤어스타일에 대해 3문장 이내로 설명
-                
-            사용자가 이미지와 함께 헤어스타일을 변경해달라고 하는 경우:
-                1. 먼저 이미지를 보고 얼굴이 몇 명인지 확인해.
-                2. 얼굴이 0명이면: "얼굴이 포함된 이미지를 첨부하셔야 분석할 수 있습니다." 라고 답변하고 끝.
-                3. 얼굴이 2명 이상이면: "이미지에 2명 이상의 얼굴이 포함되어 있습니다. 한 명만 나온 이미지를 업로드해주세요." 라고 답변하고 끝.
-                - 사용자 메시지의 텍스트 부분에서 "base64 데이터를 사용해: data:image/..." 형식의 base64 문자열을 찾아
-                - 그 전체 base64 문자열(data:image/...로 시작하는 부분)을 dall-e 도구에 전달
-                - 사용자가 입력한 이미지를 바탕으로 이미지에 있는 얼굴은 그대로 두고, 헤어스타일 부분만 바뀌게 DALL·E 도구를 사용해 이미지를 생성. 단, 생성된 이미지는 반드시 기존에 사용자가 입력으로 준 이미지가 바탕이 되어야해. 즉 얼굴 부분은 바뀌면 안된다는거야. 그리고 답변에는 이미지 url 과 함께 해당 헤어스타일에 대한 3문장 이내로 짧게 설명해.
-            
-            중요: base64 문자열은 "data:image/jpeg;base64," 또는 "data:image/png;base64,"로 시작하는 전체 문자열이야.
-            
-            사용자가 텍스트만을 제공해서 헤어스타일을 생성해달라고 하는 경우:
-                1.고객이 헤어스타일을 생성해달라고 텍스트로 요구하는 경우 , DALL·E 도구를 사용해 이미지를 생성해줘.단 여자는 실제 한국 사람의 얼굴이여야 하고 그림이어서는 안돼. 또한 증명사진처럼 4x4 사이즈의 정면을 똑바로 응시해야해. 그리고 답변에는 이미지 url 과 함께  해당 헤어스타일에 대한 3문장 이내로 짧게 설명해.
-                
+For text-only questions:
+- Recommend 3 trending hairstyles
             """,
         ),
         ("placeholder", "{chat_history}"),
-        ('placeholder', "{input}"),
+        ("placeholder", "{input}"),
         ("placeholder", "{agent_scratchpad}"),
     ]
 )
 
+class HairstyleAgent:
+    """헤어스타일 추천 Agent - 각 인스턴스가 독립적인 이미지 저장소를 가짐"""
+    
+    def __init__(self, model):
+        """
+        Args:
+            model: IdentiFace 모델 (얼굴 분석용)
+        """
+        self.model = model
+        self.current_image_base64 = None  # 인스턴스별 이미지 저장
+        self.agent = self._build_agent()
+    
+    def _build_agent(self):
+        """내부 agent 생성"""
+        llm = load_openai(model_name="gpt-4o", temperature=0)
+        
+        # Tool 정의 - self.current_image_base64 사용
+        @tool
+        def hairstyle_recommendation_tool(action: str = "analyze"):
+            """
+            Analyzes the user's face from the provided image.
+            Returns personal color, face shape, and gender information.
+            Call this when user provides an image asking for hairstyle recommendations.
+            """
+            if self.current_image_base64 is None:
+                return "오류: 이미지가 제공되지 않았습니다."
+            print(f"[INFO] Tool 실행: Base64 길이 = {len(self.current_image_base64)}")
+            return hairstyle_recommendation(self.model, self.current_image_base64)
+        
+        @tool
+        def web_search_tool(query: str) -> str:
+            """웹 검색 도구"""
+            return web_search(query)
+        
+        tools = get_tool_list(hairstyle_recommendation_tool, web_search_tool)
+
+        # Agent 생성
+        agent = create_openai_tools_agent(llm, tools, prompt)
+
+        # AgentExecutor 생성
+        agent_executor = AgentExecutor(
+            agent=agent,
+            tools=tools,
+            verbose=True,
+            max_iterations=10,
+            max_execution_time=60,
+            handle_parsing_errors=True,
+        )
+
+        # 세션 기록
+        store = {}
+        def get_session_history(session_ids):
+            if session_ids not in store:
+                store[session_ids] = ChatMessageHistory()
+            return store[session_ids]
+
+        agent_with_chat_history = RunnableWithMessageHistory(
+            agent_executor,
+            get_session_history,
+            input_messages_key="input",
+            history_messages_key="chat_history",
+        )
+
+        return agent_with_chat_history
+    
+    def invoke(self, inputs, config=None, **kwargs):
+        """
+        Agent 실행 - 입력에서 이미지를 자동으로 추출
+        
+        Args:
+            inputs: {"input": [HumanMessage(...)]} 형식
+            config: {"configurable": {"session_id": "..."}} 형식
+        """
+        # 입력에서 이미지 추출
+        if 'input' in inputs:
+            messages = inputs['input']
+            for msg in messages:
+                if hasattr(msg, 'content') and isinstance(msg.content, list):
+                    for content in msg.content:
+                        if isinstance(content, dict) and content.get('type') == 'image_url':
+                            self.current_image_base64 = content['image_url']['url']
+                            print(f"[INFO] 이미지 감지! Base64 길이: {len(self.current_image_base64)}")
+                            break
+        
+        # 원래 agent 실행
+        return self.agent.invoke(inputs, config, **kwargs)
+
+
 def build_agent(model):
-    # LLM 정의
-    llm = load_openai(model_name="gpt-4o", temperature=0)
+    """
+    HairstyleAgent 인스턴스를 생성하여 반환
     
-    # 도구 리스트 가져오기
-    @tool
-    def hairstyle_recommendation_tool(image_base64):
-        """성별,얼굴형,얼굴색을 추천해 주는 도구. base64 인코딩된 이미지를 입력으로 받음"""
-        return hairstyle_recommendation(model, image_base64)
-    
-    @tool
-    def web_search_tool(query:str)->str:
-        """웹 검색 도구"""
-        return web_search(query)
-    
-    tools = get_tool_list(hairstyle_recommendation_tool, web_search_tool)
-
-    # Agent 생성
-    agent = create_openai_tools_agent(llm, tools, prompt) 
-
-    # AgentExecutor 생성
-    agent_executor = AgentExecutor(
-        agent=agent,
-        tools=tools,
-        verbose=True,
-        max_iterations=30,
-        max_execution_time=200,  
-        handle_parsing_errors=True,
-    )
-
-
-    # session_id 를 저장할 딕셔너리 생성
-    store = {}
-
-    # session_id 를 기반으로 세션 기록을 가져오는 함수
-    def get_session_history(session_ids):
-        if session_ids not in store:  # session_id 가 store에 없는 경우
-            # 새로운 ChatMessageHistory 객체를 생성하여 store에 저장
-            store[session_ids] = ChatMessageHistory()
-        return store[session_ids]  # 해당 세션 ID에 대한 세션 기록 반환
-
-    # 채팅 메시지 기록이 추가된 에이전트를 생성합니다.
-    agent_with_chat_history = RunnableWithMessageHistory(
-        agent_executor,
-        # 대화 session_id
-        get_session_history,
-        # 프롬프트의 질문이 입력되는 key: "input"
-        input_messages_key="input",
-        # 프롬프트의 메시지가 입력되는 key: "chat_history"
-        history_messages_key="chat_history",
-    )
-
-    return agent_with_chat_history
+    Args:
+        model: IdentiFace 모델
+        
+    Returns:
+        HairstyleAgent 인스턴스
+    """
+    return HairstyleAgent(model)
 
