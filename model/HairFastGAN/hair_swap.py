@@ -10,14 +10,14 @@ import torchvision.transforms.functional as F
 from PIL import Image
 from torchvision.io import read_image, ImageReadMode
 
-from models.Alignment import Alignment
-from models.Blending import Blending
-from models.Embedding import Embedding
-from models.Net import Net
-from utils.image_utils import equal_replacer
-from utils.seed import seed_setter
-from utils.shape_predictor import align_face
-from utils.time import bench_session
+from model.HairFastGAN.models.Alignment import Alignment
+from model.HairFastGAN.models.Blending import Blending
+from model.HairFastGAN.models.Embedding import Embedding
+from model.HairFastGAN.models.Net import Net
+from model.HairFastGAN.utils.image_utils import equal_replacer
+from model.HairFastGAN.utils.seed import seed_setter
+from model.HairFastGAN.utils.shape_predictor import align_face
+from model.HairFastGAN.utils.time import bench_session
 
 TImage = tp.TypeVar('TImage', torch.Tensor, Image.Image, np.ndarray)
 TPath = tp.TypeVar('TPath', Path, str)

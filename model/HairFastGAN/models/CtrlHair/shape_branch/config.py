@@ -11,7 +11,7 @@ import addict  # nesting dict
 import os
 import argparse
 
-from models.CtrlHair.global_value_utils import GLOBAL_DATA_ROOT, DEFAULT_CONFIG_SHAPE_BRANCH
+from model.HairFastGAN.models.CtrlHair.global_value_utils import GLOBAL_DATA_ROOT, DEFAULT_CONFIG_SHAPE_BRANCH
 
 configs = [
     addict.Dict({

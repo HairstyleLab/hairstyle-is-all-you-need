@@ -1,6 +1,6 @@
 import torch
 
-from models.CtrlHair.global_value_utils import HAIR_IDX
+from model.HairFastGAN.models.CtrlHair.global_value_utils import HAIR_IDX
 
 
 def mask_label_to_one_hot(img):
