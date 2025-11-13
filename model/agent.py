@@ -5,7 +5,7 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_classic.agents import AgentExecutor,create_openai_tools_agent
 from model.model_load import load_openai
-from model.tools import dummy_tool, hairstyle_recommendation, web_search, get_tool_list
+from model.tools import hairstyle_recommendation, web_search, get_tool_list
 
 # 프롬프트 생성
 # 프롬프트는 에이전트에게 모델이 수행할 작업을 설명하는 텍스트를 제공합니다. (도구의 이름과 역할을 입력)
@@ -73,9 +73,7 @@ def build_agent(model):
         """웹 검색 도구"""
         return web_search(query)
     
-    
-    
-    tools = get_tool_list(hairstyle_recommendation_tool, web_search_tool, dummy_func)
+    tools = get_tool_list(hairstyle_recommendation_tool, web_search_tool)
 
     # Agent 생성
     agent = create_openai_tools_agent(llm, tools, prompt) 
