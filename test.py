@@ -51,80 +51,31 @@ def encode_image_from_file(file_path):
         return f"data:{mime_type};base64,{base64.b64encode(image_content).decode('utf-8')}"
 
 agent = build_agent(model)
-encoded_image = encode_image(file_path)
+encoded_image = encode_image_from_file(file_path)
 
-print("\n\n" + "=" * 50)
-print("테스트 1: 관련없는 질의")
-print("=" * 50)
-response = agent.invoke(
-    {"input": [HumanMessage(content="오늘 날씨 어때?")]},
-    config={"configurable": {"session_id": "test1"}}
-)
-print("\n응답:")
-print(response['output'])
+def make_human_message(input_text,session_id,file_path=None):
+    if not file_path:
+        response = agent.invoke(
+            {"input": input_text},
+            config={"configurable": {"session_id": session_id}}
+        )
+        print(response['output'])
+        
+    else:
+        response = agent.invoke(
+            {"input": [HumanMessage(content=[
+                {"type": "text", "text": input_text},
+                {"type": "image_url", "image_url": {"url": encoded_image}}
+            ])]},
+            config={"configurable": {"session_id": session_id}}
+        )
+        print(response['output'])
+        extract_and_display_image(response)
 
-print("\n\n" + "=" * 50)
-print("테스트 2: 일반 헤어스타일 추천")
-print("=" * 50)
-response = agent.invoke(
-    {"input": [HumanMessage(content="요즘 유행하는 헤어스타일 추천해줘")]},
-    config={"configurable": {"session_id": "test2"}}
-)
-print("\n응답:")
-print(response['output'])
-
-print("\n\n" + "=" * 50)
-print("테스트 3: 겨울 헤어스타일 추천")
-print("=" * 50)
-response = agent.invoke(
-    {"input": [HumanMessage(content="겨울에 어울리는 헤어스타일 추천해줘")]},
-    config={"configurable": {"session_id": "test3"}}
-)
-print("\n응답:")
-print(response['output'])
-
-print("\n\n" + "=" * 50)
-print("테스트 4: 존재하지 않는 헤어스타일")
-print("=" * 50)
-response = agent.invoke(
-    {"input": [HumanMessage(content="애플펜슬 헤어스타일에 대해 알려줘")]},
-    config={"configurable": {"session_id": "test4"}}
-)
-print("\n응답:")
-print(response['output'])
-
-print("\n\n" + "=" * 50)
-print("테스트 5: 이미지 분석")
-response = agent.invoke(
-    {"input": [HumanMessage(
-        content=[
-            {"type": "text", "text": f"이 이미지를 분석해줘. 정밀 분석이 필요하면 지금 들어온 base64 데이터를 사용해"},
-            {"type": "image_url", "image_url": {"url": encoded_image}}
-        ]
-    )]},
-    config={"configurable": {"session_id": "test5"}}        
-)
-print("\n응답:")
-print(response['output'])
+print(make_human_message("이 머리에 어울리는 헤어스타일 추천해줘", session_id="test_session1", file_path=file_path))
+print(make_human_message("이 얼굴에 히피펌 적용한 사진 줘볼래?", session_id="test_session2", file_path=file_path))
 print("\n\n테스트 완료!")
 
-print("\n\n" + "=" * 50)
-print("테스트 6: DALL-E 이미지 생성")
-response = agent.invoke(
-    {"input": [HumanMessage(
-        content=[
-            {"type": "text", "text": f"이 이미지에서 헤어스타일만 히피펌으로 바꿔줘. 지금 들어온  base64 데이터를 사용해"},
-            {"type": "image_url", "image_url": {"url": encoded_image}}
-        ]
-    )]},
-    config={"configurable": {"session_id": "test6"}}        
-)
-print("\n응답:")
-print(response['output'])
-print("\nDALL-E 생성 이미지 추출 중...")
-extract_and_display_image(response)
 
 
-
-print("\n\n테스트 완료!")
 
