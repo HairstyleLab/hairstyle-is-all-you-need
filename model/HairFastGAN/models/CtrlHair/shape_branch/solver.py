@@ -14,7 +14,7 @@ import torch.nn.functional as F
 import torchvision.transforms as T
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-from models.CtrlHair.my_torchlib.train_utils import generate_noise
+from model.HairFastGAN.models.CtrlHair.my_torchlib.train_utils import generate_noise
 from .config import cfg
 from .model import Generator, Discriminator, DiscriminatorNoise
 # solver

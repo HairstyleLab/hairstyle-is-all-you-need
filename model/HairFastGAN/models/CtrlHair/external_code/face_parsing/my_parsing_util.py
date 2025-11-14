@@ -12,8 +12,8 @@ import numpy as np
 import torch
 from PIL import Image
 
-from models.CtrlHair.external_code.face_parsing.model import BiSeNet
-from models.CtrlHair.global_value_utils import PARSING_LABEL_LIST
+from model.HairFastGAN.models.CtrlHair.external_code.face_parsing.model import BiSeNet
+from model.HairFastGAN.models.CtrlHair.global_value_utils import PARSING_LABEL_LIST
 import torchvision.transforms as transforms
 
 

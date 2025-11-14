@@ -41,12 +41,14 @@ def hairstyle_generation(model, face_img, shape_img, color_img):
     result = generate_hairstyle(model, face_img, shape_img, color_img)
     return result
 
-def generate_image(image_path, client, prompt):
+def generate_image(client, prompt, image_path, shape_path, color_path):
 
     result = client.images.edit(
         model="gpt-image-1",
         image=[
             open(image_path, "rb"),
+            open(shape_path, "rb"),
+            open(color_path, "rb"),
         ],
         prompt=prompt
     )

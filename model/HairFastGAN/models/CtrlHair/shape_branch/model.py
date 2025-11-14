@@ -8,11 +8,11 @@
 """
 
 import torch.nn as nn
-from models.CtrlHair.my_torchlib.module import LinearBlock, Conv2dBlock
+from model.HairFastGAN.models.CtrlHair.my_torchlib.module import LinearBlock, Conv2dBlock
 import torch
 from torch.nn import init
 import numpy as np
-from models.CtrlHair.global_value_utils import HAIR_IDX
+from model.HairFastGAN.models.CtrlHair.global_value_utils import HAIR_IDX
 
 
 def generate_pos_embedding(img_size, order=10):

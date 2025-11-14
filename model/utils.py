@@ -1,5 +1,8 @@
 import os
 import tensorflow as tf
+from PIL import Image
+from io import BytesIO
+import matplotlib.pyplot as plt
 # from model.HairFastGAN.hair_swap import HairFast, get_parser
 from model.IdentiFace.Backend.model_manager import model_manager
 from model.IdentiFace.Backend.functions import Functions
@@ -43,6 +46,14 @@ def get_face_shape_and_gender(model, file_path):
         print("Shape model or Gender model not loaded.")
 
     return predicted_shape, predicted_gender
+
+def display_image(image_bytes):
+    img = Image.open(BytesIO(image_bytes))
+
+    plt.figure(figsize=(6, 6))
+    plt.imshow(img)
+    plt.axis("off")
+    plt.show()
 
 # 퍼스널 컬러 스킨 톤-2017년 논문 기반 분류 알고리즘
 def srgb_to_linear(c):
