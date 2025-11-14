@@ -4,7 +4,7 @@ import requests
 from io import BytesIO
 from PIL import Image
 from dotenv import load_dotenv
-from model.agent import build_agent
+from model.agent_openai import build_agent
 from model.utils import load_identiface
 import base64
 from langchain_core.messages import HumanMessage
