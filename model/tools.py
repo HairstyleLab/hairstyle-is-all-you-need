@@ -1,4 +1,5 @@
 import os
+import json
 import base64
 import tempfile
 import stone
@@ -37,9 +38,45 @@ def hairstyle_recommendation(model, image_base64):
     finally:
         os.unlink(temp_path)
 
-def hairstyle_generation(model, face_img, shape_img, color_img):
-    result = generate_hairstyle(model, face_img, shape_img, color_img)
-    return result
+# def hairstyle_generation(model, face_img, shape_img, color_img):
+#     result = generate_hairstyle(model, face_img, shape_img, color_img)
+#     return result
+
+def hairstyle_generation(image_base64, hairstyle, haircolor, client):
+    if image_base64.startswith('data:image'):
+        image_data = base64.b64decode(image_base64.split(',')[1])
+    else:
+        image_data = base64.b64decode(image_base64)
+    
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
+        temp_file.write(image_data)
+        temp_path = temp_file.name
+
+    with open('config/reference.json', 'r', encoding='utf-8') as f:
+        reference = json.load(f)
+
+    prompt = "첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 바꾸고 세번째 이미지의 헤어컬러를 적용해줘"
+    hairstyle_path = None
+    haircolor_path = None
+
+    hairstyle_dict = reference.get("헤어스타일", {})
+
+    for gender in hairstyle_dict.values():
+        for category in gender.values():
+            if hairstyle in category:
+                hairstyle_path = category[hairstyle]
+                break
+        if hairstyle_path:
+            break
+
+    color_dict = reference.get("컬러", {})
+    haircolor_path = color_dict.get(haircolor, None)
+
+    image = generate_image(client, prompt, temp_path, hairstyle_path, haircolor_path)
+    with open("result/output.jpg", "wb") as f:
+        f.write(image)
+
+    return "이미지 생성 완료."
 
 def generate_image(client, prompt, image_path, shape_path, color_path):
 
