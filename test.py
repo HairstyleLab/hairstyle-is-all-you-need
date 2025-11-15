@@ -3,8 +3,10 @@ import re
 import requests
 from io import BytesIO
 from PIL import Image
+from openai import OpenAI
 from dotenv import load_dotenv
 from model.agent_openai import build_agent
+# from model.agent_hf import build_agent
 from model.utils import load_identiface
 import base64
 from langchain_core.messages import HumanMessage
@@ -12,18 +14,14 @@ from PIL import Image
 # from model.utils import load_hairfastgan, generate_hairstyle
 from model.utils import load_identiface, get_face_shape_and_gender
 
-file_path = "images/face2.jpg"
-face_img = "images/ky.jpg"
-shape_img = "images/ew.jpg"
-color_img = "images/gd.jpg"
+file_path = "images/dw2.jpg"
+load_dotenv()
 
 # model = load_hairfastgan()
 # result = generate_hairstyle(model, face_img, shape_img, color_img)
 
 model = load_identiface()
-predicted_shape, shape_probs = get_face_shape_and_gender(model, file_path)
-
-load_dotenv()
+client = OpenAI()
 
 def extract_and_display_image(response,image_path=os.path.abspath("images")):
     output = response.get('output', '')
@@ -50,7 +48,7 @@ def encode_image_from_file(file_path):
             mime_type = "image/unknown"
         return f"data:{mime_type};base64,{base64.b64encode(image_content).decode('utf-8')}"
 
-agent = build_agent(model)
+agent = build_agent(model, client)
 encoded_image = encode_image_from_file(file_path)
 
 def make_human_message(input_text,session_id,file_path=None):
@@ -70,11 +68,10 @@ def make_human_message(input_text,session_id,file_path=None):
             config={"configurable": {"session_id": session_id}}
         )
         print(response['output'])
-        extract_and_display_image(response)
 
-print(make_human_message("이 머리에 어울리는 헤어스타일 추천해줘", session_id="test_session1", file_path=file_path))
-print(make_human_message("이 얼굴에 히피펌 적용한 사진 줘볼래?", session_id="test_session2", file_path=file_path))
-print("\n\n테스트 완료!")
+# print(make_human_message("이 머리에 어울리는 헤어스타일 추천해줘", session_id="test_session1", file_path=file_path))
+print(make_human_message("이 얼굴에 히피펌 헤어스타일에 애쉬그레이 컬러를 적용한 이미지를 생성해줄래?", session_id="test_session2", file_path=file_path))
+# print("\n\n테스트 완료!")
 
 
 
