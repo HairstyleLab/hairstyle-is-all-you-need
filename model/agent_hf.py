@@ -5,7 +5,7 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_classic.agents import AgentExecutor, create_react_agent
 from model.model_load import load_openai
-from model.tools import hairstyle_recommendation, web_search, get_tool_list
+from model.tools import hairstyle_recommendation, hairstyle_generation, web_search, get_tool_list
 import os
 from model.model_load import use_endpoint
 
@@ -28,13 +28,13 @@ Observation: the result of the action
 Thought: I now know the final answer
 Final Answer: the final answer to the original input question
 
-When user provides an image and asks for hairstyle recommendations:
+When user asks for hairstyle recommendations:
 - Use hairstyle_recommendation_tool
 - Then recommend 3 suitable hairstyles
 
-When user asks to change/modify hairstyle:
-- Use Dall-E-Image-Generator tool ONLY ONCE
-- Immediately provide Final Answer after getting the image URL
+When user provides an image and asks to change hairstyle in the image to desired hairstyle or haircolor:
+- Call hairstyle_generation_tool with hairstyle and haircolor parameters which is expected to be used for changing given hairstyle image.
+- extract hairstyle and haircolor based on user's question. 
 
 **Important**:
 you have to answer in Korean.
@@ -48,12 +48,13 @@ Thought:{agent_scratchpad}"""
 class HairstyleAgent:
     """헤어스타일 추천 Agent - 각 인스턴스가 독립적인 이미지 저장소를 가짐"""
     
-    def __init__(self, model):
+    def __init__(self, model, client):
         """
         Args:
             model: IdentiFace 모델 (얼굴 분석용)
         """
         self.model = model
+        self.client = client
         self.current_image_base64 = None  # 인스턴스별 이미지 저장
         self.dalle_called = False  # DALL-E 호출 추적
         self.agent = self._build_agent()
@@ -69,7 +70,7 @@ class HairstyleAgent:
             """
             Analyzes the user's face from the provided image.
             Returns personal color, face shape, and gender information.
-            Call this when user provides an image asking for hairstyle recommendations.
+            Call this when user asks for hairstyle recommendations.
             """
             if self.current_image_base64 is None:
                 return "오류: 이미지가 제공되지 않았습니다."
@@ -77,12 +78,24 @@ class HairstyleAgent:
             return hairstyle_recommendation(self.model, self.current_image_base64)
         
         @tool
+        def hairstyle_generation_tool(hairstyle: str, haircolor: str):
+            """
+            Generates a hairstyle image based on the user's request.
+            Synthesizes the desired hairstyle and hair color onto the base image provided by the user.
+            Call this when the user provides an image and asks for image generation with a specific hairstyle or hair color.
+            """
+            if self.current_image_base64 is None:
+                return "오류: 이미지가 제공되지 않았습니다."
+            print(f"[INFO] Tool 실행: Base64 길이 = {len(self.current_image_base64)}")
+            return hairstyle_generation(self.current_image_base64, hairstyle, haircolor, self.client)
+
+        @tool
         def web_search_tool(query: str) -> str:
             """웹 검색 도구"""
             return web_search(query)
         
         
-        tools = get_tool_list(hairstyle_recommendation_tool, web_search_tool)
+        tools = get_tool_list(hairstyle_recommendation_tool, hairstyle_generation_tool, web_search_tool)
 
         # ReAct Agent 생성 (Qwen 호환)
         agent = create_react_agent(llm, tools, react_prompt)
@@ -136,7 +149,7 @@ class HairstyleAgent:
         return self.agent.invoke(inputs, config, **kwargs)
 
 
-def build_agent(model):
+def build_agent(model, client):
     """
     HairstyleAgent 인스턴스를 생성하여 반환
     
@@ -146,5 +159,5 @@ def build_agent(model):
     Returns:
         HairstyleAgent 인스턴스
     """
-    return HairstyleAgent(model)
+    return HairstyleAgent(model, client)
 
