@@ -5,7 +5,7 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_classic.agents import AgentExecutor,create_openai_tools_agent
 from model.model_load import load_openai
-from model.tools import hairstyle_recommendation, web_search, get_tool_list
+from model.tools import hairstyle_recommendation, hairstyle_generation, web_search, get_tool_list
 
 prompt = ChatPromptTemplate.from_messages(
     [
@@ -18,7 +18,8 @@ When user provides an image and asks for hairstyle recommendations:
 - Then recommend 3 suitable hairstyles based on the result
 
 When user asks to change/modify hairstyle:
-- Use DALL-E tool
+- Call hairstyle_generation_tool with hairstyle and haircolor parameters which is expected to be used for changing given hairstyle image.
+- extract hairstyle and haircolor based on user's question. 
 
 For text-only questions:
 - Recommend 3 trending hairstyles
@@ -33,12 +34,13 @@ For text-only questions:
 class HairstyleAgent:
     """헤어스타일 추천 Agent - 각 인스턴스가 독립적인 이미지 저장소를 가짐"""
     
-    def __init__(self, model):
+    def __init__(self, model, client):
         """
         Args:
             model: IdentiFace 모델 (얼굴 분석용)
         """
         self.model = model
+        self.client = client
         self.current_image_base64 = None  # 인스턴스별 이미지 저장
         self.agent = self._build_agent()
     
@@ -60,11 +62,23 @@ class HairstyleAgent:
             return hairstyle_recommendation(self.model, self.current_image_base64)
         
         @tool
+        def hairstyle_generation_tool(hairstyle: str, haircolor: str):
+            """
+            Generates a hairstyle image based on the user's request.
+            Synthesizes the desired hairstyle and hair color onto the base image provided by the user.
+            Call this when the user provides an image and asks for a specific hairstyle or hair color.
+            """
+            if self.current_image_base64 is None:
+                return "오류: 이미지가 제공되지 않았습니다."
+            print(f"[INFO] Tool 실행: Base64 길이 = {len(self.current_image_base64)}")
+            return hairstyle_generation(self.current_image_base64, hairstyle, haircolor, self.client)
+
+        @tool
         def web_search_tool(query: str) -> str:
             """웹 검색 도구"""
             return web_search(query)
         
-        tools = get_tool_list(hairstyle_recommendation_tool, web_search_tool)
+        tools = get_tool_list(hairstyle_recommendation_tool, hairstyle_generation_tool, web_search_tool)
 
         # Agent 생성
         agent = create_openai_tools_agent(llm, tools, prompt)
@@ -118,7 +132,7 @@ class HairstyleAgent:
         return self.agent.invoke(inputs, config, **kwargs)
 
 
-def build_agent(model):
+def build_agent(model, client):
     """
     HairstyleAgent 인스턴스를 생성하여 반환
     
@@ -128,5 +142,4 @@ def build_agent(model):
     Returns:
         HairstyleAgent 인스턴스
     """
-    return HairstyleAgent(model)
-
+    return HairstyleAgent(model, client)
