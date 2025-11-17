@@ -11,6 +11,7 @@ venv/
 .vscode/
 .idea/
 
+results
 images
 model/IdentiFace/Models
 model/HairFastGAN/input
