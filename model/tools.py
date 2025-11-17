@@ -42,7 +42,7 @@ def hairstyle_recommendation(model, image_base64):
 #     result = generate_hairstyle(model, face_img, shape_img, color_img)
 #     return result
 
-def hairstyle_generation(image_base64, hairstyle, haircolor, client):
+def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, client=None):
     if image_base64.startswith('data:image'):
         image_data = base64.b64decode(image_base64.split(',')[1])
     else:
@@ -55,38 +55,57 @@ def hairstyle_generation(image_base64, hairstyle, haircolor, client):
     with open('config/reference.json', 'r', encoding='utf-8') as f:
         reference = json.load(f)
 
-    prompt = "첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 바꾸고 세번째 이미지의 헤어컬러를 적용해줘"
+    image = None
     hairstyle_path = None
     haircolor_path = None
-
     hairstyle_dict = reference.get("헤어스타일", {})
 
-    for gender in hairstyle_dict.values():
-        for category in gender.values():
-            if hairstyle in category:
-                hairstyle_path = category[hairstyle]
+    if hairstyle:
+        for gender in hairstyle_dict.values():
+            for category in gender.values():
+                if hairstyle in category:
+                    hairstyle_path = category[hairstyle]
+                    break
+            if hairstyle_path:
                 break
-        if hairstyle_path:
-            break
+    if haircolor:
+        color_dict = reference.get("컬러", {})
+        haircolor_path = color_dict.get(haircolor, None)
 
-    color_dict = reference.get("컬러", {})
-    haircolor_path = color_dict.get(haircolor, None)
+    if hairstyle_path and haircolor_path:
+        prompt = """첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 바꾸고 세번째 이미지의 사람 헤어컬러를 적용해줘.
+                    이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어스타일과 헤어컬러만 바뀌어야 해."""
+        image = generate_image(client, prompt, image_path=temp_path, shape_path=hairstyle_path, color_path=haircolor_path)
+    elif hairstyle_path and haircolor_path is None:
+        prompt = """첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 적용해주고 헤어컬러는 기존 그대로 유지해줘.
+                    이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어스타일만 바뀌어야 해."""
+        image = generate_image(client, prompt, image_path=temp_path, shape_path=hairstyle_path)
+    elif haircolor_path and hairstyle_path is None:
+        prompt = """첫번째 이미지의 사람 헤어컬러만 두번째 이미지의 사람 컬러로 바꿔줘.
+                    이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어컬러만 바뀌어야 해."""
+        image = generate_image(client, prompt, image_path=temp_path, color_path=haircolor_path)
 
-    image = generate_image(client, prompt, temp_path, hairstyle_path, haircolor_path)
-    with open("result/output.jpg", "wb") as f:
+    with open("results/output.jpg", "wb") as f:
         f.write(image)
 
     return "이미지 생성 완료."
 
-def generate_image(client, prompt, image_path, shape_path, color_path):
+def safe_open(path):
+    if path and os.path.exists(path):
+        return open(path, "rb")
+    return None
+
+def generate_image(client, prompt, image_path, shape_path=None, color_path=None):
+    image_inputs = [
+        safe_open(image_path),
+        safe_open(shape_path),
+        safe_open(color_path),
+    ]
+    image_inputs = [img for img in image_inputs if img is not None]
 
     result = client.images.edit(
         model="gpt-image-1",
-        image=[
-            open(image_path, "rb"),
-            open(shape_path, "rb"),
-            open(color_path, "rb"),
-        ],
+        image=image_inputs,
         prompt=prompt
     )
 
