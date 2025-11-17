@@ -14,7 +14,7 @@ from PIL import Image
 # from model.utils import load_hairfastgan, generate_hairstyle
 from model.utils import load_identiface, get_face_shape_and_gender
 
-file_path = "images/dw2.jpg"
+file_path = "images/is.jpg"
 load_dotenv()
 
 # model = load_hairfastgan()
@@ -75,10 +75,11 @@ q1 = "이 얼굴에 히피펌 헤어스타일에 애쉬그레이 컬러를 적�
 q2 = "이 얼굴에 히피펌 헤어스타일을 적용한 이미지를 생성해줄래?" # (이미지 생성시, 헤어스타일만 명시한 경우)
 q3 = "이 얼굴에 애쉬그레이를 적용한 이미지를 생성해줄래?" # (이미지 생성시, 헤어컬러만 명시한 경우)
 q4 = "이 얼굴에 히피펌 헤어스타일에 애쉬그레이 컬러를 적용한 이미지를 생성해줄래?" # (이미지 생성 시 이미지 업로드 안한 경우)
-q5 = "이 얼굴에 히피 펆 헤어스타일에 애시 그래 컬러를 적용한 이미지를 생성해줄래?" # (이미지 생성 시 헤어스타일, 헤어컬러를 살짝 틀린 문자열로 표현한 경우)
-q6 = "이 얼굴에 마이쮸펌 헤어스타일에 칙칙한 초코칩 컬러를 적용한 이미지를 생성해줄래?" # (이미지 생성 시 등록된 헤어스타일, 헤어컬러가 아닌 옵션으로 표현한 경우)
+q5 = "이 얼굴에 마땅한 헤어스타일과 컬러를 적용한 이미지를 생성해줄래?" # (이미지 생성 시 헤어스타일과 헤어컬러를 언급 안한 경우)
+q6 = "이 얼굴에 히피 펆 헤어스타일에 애시 그래 컬러를 적용한 이미지를 생성해줄래?" # (이미지 생성 시 헤어스타일, 헤어컬러를 살짝 틀린 문자열로 표현한 경우)
+q7 = "이 얼굴에 마이쮸펌 헤어스타일에 칙칙한 초코칩 컬러를 적용한 이미지를 생성해줄래?" # (이미지 생성 시 등록된 헤어스타일, 헤어컬러가 아닌 옵션으로 표현한 경우)
 
 # print(make_human_message("이 머리에 어울리는 헤어스타일 추천해줘", session_id="test_session1", file_path=file_path))
-print(make_human_message(q5, session_id="test_session2", file_path=file_path))
+print(make_human_message(q6, session_id="test_session2", file_path=file_path))
 # print("\n\n테스트 완료!")
 
