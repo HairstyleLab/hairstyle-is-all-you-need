@@ -16,9 +16,9 @@ def load_retriever(vectorstore_path, embeddings=embeddings, k=5):
 
     retriever = vector_store.as_retriever(search_type='similarity', search_kwargs={'k': k})
 
-    return retriever
+    return retriever, vector_store
 
 if __name__=="__main__":
-    retriever = load_retriever('summary_cat_season', k=3)
+    retriever,_ = load_retriever('db/season', k=3)
 
     retriever.invoke('여름 남자 머리 추천')
