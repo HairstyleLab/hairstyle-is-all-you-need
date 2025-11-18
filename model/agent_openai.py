@@ -27,9 +27,34 @@ prompt = ChatPromptTemplate.from_messages(
 
             [1. 헤어스타일 추천 요청]
 
-            - 사용자가 이미지를 업로드하고 “추천”을 요청하면  
-            → hairstyle_recommendation_tool()을 파라미터 없이 호출  
-            → 결과를 바탕으로 어울리는 헤어스타일 3가지를 한국어로 제안
+            - 사용자가 이미지를 업로드하고 “추천”을 요청하면 hairstyle_recommendation_tool() 도구 호출
+
+            **기본 플로우**
+            1. 업로드된 이미지가 있는지 확인
+            2. 이미지가 있는 경우, 이미지 속 사람의 얼굴이 있는지 확인
+            3. 사람 얼굴이 있는 경우, 사람이 몇 명 있나 확인
+            3. 사람이 1명 있을 경우, hairstyle_recommendation_tool 도구 호출해 응답 생성에 활용
+
+           **예외 상황**
+           (1) 업로드된 이미지가 없는 경우, "업로드된 이미지가 없습니다. 이미지를 업로드하신 후 다시 시도해주세요."라고 응답 후 마무리
+           (2) 이미지에 사람 얼굴이 없는 경우, "얼굴이 포함된 이미지를 첨부하셔야 이미지를 만들 수 있습니다. 확인 후 다른 사진을 업로드해주세요."라고 응답 후 마무리
+           (3) 이미지에 사람이 여러명이 있는 경우, "이 이미지에는 2 명 이상의 얼굴이 포함되어 있습니다. 한 명만 나온 이미지를 업로드 해주세요."라고 응답 후 마무리
+
+           **도구 호출 시 유의사항**
+           - 도구 호출할 때 사용자 질의를 query 파라미터로 전달 → hairstyle_recommendation_tool(query=...)
+           - 사용자 질의에 "봄, 여름, 가을, 겨울"의 키워드가 있는 경우, **계절**도 정확히 추출해 season 파라미터로 전달 → hairstyle_recommendation_tool(query=..., season=...)
+
+           **도구를 통해 받은 데이터를 이용한 답변 순서**
+           - 모든 설명은 지어내지말고 도구로부터 받은 값만을 활용해 생성. 사용자의 질의를 고려해 일부 키워드 언급.
+           1. 사용자 이미지를 통해 분석한 personal_color와 얼굴형을 간략히 언급한 후, 얼굴형에 어울리는 헤어스타일 3문장 이내로 설명. 
+           - 얼굴형 설명에는 특정 커트를 언급하지 말고 지어내지말것. 도구로부터 받은 값만을 활용해 생성.
+           2. hairstyle_docs에 있는 헤어스타일을 하나씩 차례대로 추천. 
+           - 각 헤어스타일을 하면 어떤 느낌을 줄 수 있는지 4문장 이내로 사용자 질의 내용을 고려해 자세히 설명. 
+           3. haircolor_docs에 있는 헤어컬러를 하나씩 차례대로 추천.
+           - 각 헤어컬러로 염색하면 어떤 느낌이 나는지 특징에 대해 4문장 이내로 사용자 질의 내용을 고려해 자세히 설명.
+           4. 얼굴형과 퍼스널컬러는 사진의 각도나 빛에 따라 달라질 수 있다는 조심스러운 문구로 마무리
+           5. 모든 답변은 반드시 한국어여야함
+
 
             [2. 헤어스타일/헤어컬러 변경(이미지 생성) 요청]
 
@@ -107,14 +132,14 @@ class HairstyleAgent:
         
         # Tool 정의 - self.current_image_base64 사용
         @tool
-        def hairstyle_recommendation_tool(action: str = "analyze"):
+        def hairstyle_recommendation_tool(query:str, season=None,action: str = "analyze"):
             """
             사용자의 요청에 따라 어울리는 헤어스타일 또는 헤어컬러를 찾아서 알려줍니다.
             """
             if self.current_image_base64 is None:
                 return "오류: 이미지가 제공되지 않았습니다."
             print(f"[INFO] Tool 실행: Base64 길이 = {len(self.current_image_base64)}")
-            return hairstyle_recommendation(self.model, self.current_image_base64)
+            return hairstyle_recommendation(self.model, self.current_image_base64, query, season)
         
         @tool
         def hairstyle_generation_tool(hairstyle=None, haircolor=None):

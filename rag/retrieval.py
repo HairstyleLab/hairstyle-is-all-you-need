@@ -1,11 +1,12 @@
 from dotenv import load_dotenv
-from langchain_openai import OpenAIEmbeddings
+# from langchain_openai import OpenAIEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 
 load_dotenv()
 
-embeddings = OpenAIEmbeddings(model='text-embedding-3-small')
-# embeddings = HuggingFaceEmbeddings(model_name="dragonkue/snowflake-arctic-embed-l-v2.0-ko", model_kwargs={'device':'cpu'}, encode_kwargs={'normalize_embeddings':True})
+# embeddings = OpenAIEmbeddings(model='text-embedding-3-small')
+embeddings = HuggingFaceEmbeddings(model_name="dragonkue/snowflake-arctic-embed-l-v2.0-ko", model_kwargs={'device':'cpu'}, encode_kwargs={'normalize_embeddings':True})
 
 def load_retriever(vectorstore_path, embeddings=embeddings, k=5):
     vector_store = FAISS.load_local(
