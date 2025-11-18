@@ -104,3 +104,16 @@ def classify_personal_color(rgb_tuple):
             return "여름쿨"
         else:
             return "겨울쿨"
+        
+def get_faceshape(face_shape:str)->str:
+    match face_shape:
+        case "Round":
+            return "둥근형"
+        case "Oval":
+            return "계란형"
+        case "Heart":
+            return "하트형"
+        case "Oblong":
+            return "긴형"
+        case "Square":
+            return "사각형"
