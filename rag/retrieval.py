@@ -1,14 +1,7 @@
-from dotenv import load_dotenv
-# from langchain_openai import OpenAIEmbeddings
-from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
+from langchain_core.documents import Document
 
-load_dotenv()
-
-# embeddings = OpenAIEmbeddings(model='text-embedding-3-small')
-embeddings = HuggingFaceEmbeddings(model_name="dragonkue/snowflake-arctic-embed-l-v2.0-ko", model_kwargs={'device':'cpu'}, encode_kwargs={'normalize_embeddings':True})
-
-def load_retriever(vectorstore_path, embeddings=embeddings, k=5):
+def load_retriever(vectorstore_path, embeddings, k=5):
     vector_store = FAISS.load_local(
         folder_path=vectorstore_path,
         embeddings=embeddings,
@@ -16,10 +9,11 @@ def load_retriever(vectorstore_path, embeddings=embeddings, k=5):
     )
 
     retriever = vector_store.as_retriever(search_type='similarity', search_kwargs={'k': k})
-
     return retriever, vector_store
 
-if __name__=="__main__":
-    retriever,_ = load_retriever('db/season', k=3)
+def rerank(query: str, docs: list[Document], hf_reranker, k=5) -> list[Document]:
+    sorted_docs = sorted([(docs[i], hf_reranker.score((docs[i].page_content, query))) for i in range(len(docs))], 
+                        key=lambda x:x[1], 
+                        reverse=True)
 
-    retriever.invoke('여름 남자 머리 추천')
+    return [doc for doc, _ in sorted_docs[:k]]
