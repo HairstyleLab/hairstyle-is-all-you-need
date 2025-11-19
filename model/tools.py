@@ -9,6 +9,7 @@ from langchain_classic.agents import load_tools
 from langchain_tavily import TavilySearch
 # from model.utils import generate_hairstyle
 from model.utils import get_face_shape_and_gender, classify_personal_color,get_faceshape
+from model.model_load import load_embedding_model, load_reranker_model
 from rag.retrieval import load_retriever
 
 def skin_tone_choice(result):
@@ -51,8 +52,9 @@ def hairstyle_recommendation(model, image_base64, query:str, season=None):
 
         if season is not None:
             seasonal_hairstyle_list = data['계절'][gender+season]
-
-        _, vectorstore = load_retriever("rag/db/all_merge_hf")
+        
+        embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cpu")
+        _, vectorstore = load_retriever("rag/db/all_merge_hf", embeddings=embeddings)
         # _, vectorstore = load_retriever("rag/db/all_split_merge_hf",k=450)
 
 
