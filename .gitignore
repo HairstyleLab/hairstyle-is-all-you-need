@@ -18,3 +18,4 @@ model/HairFastGAN/input
 model/HairFastGAN/pretrained_models
 
 data
+rag/db

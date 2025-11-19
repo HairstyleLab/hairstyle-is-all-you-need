@@ -1,11 +1,12 @@
 import os
 import torch
 from langchain_ollama import ChatOllama
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from transformers import BitsAndBytesConfig
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_huggingface import HuggingFaceEndpoint, ChatHuggingFace, HuggingFacePipeline
+# from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.cross_encoders import HuggingFaceCrossEncoder
+from langchain_huggingface import HuggingFaceEmbeddings, HuggingFaceEndpoint, ChatHuggingFace, HuggingFacePipeline
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 from typing import List, Optional
 from transformers import Qwen3VLMoeForConditionalGeneration, AutoProcessor
@@ -15,10 +16,18 @@ from langchain_core.outputs import ChatResult, ChatGeneration
 from pydantic import ConfigDict  # pydantic v2
 
 
-def load_embedding_model(model_name):
-    embedding_model = HuggingFaceEmbeddings(model_name=model_name)
+def load_embedding_model(model_name, device='cpu'):
+    if 'text-embedding-3' in model_name:
+        embedding_model = OpenAIEmbeddings(model_name=model_name)
+    else:
+        embedding_model = HuggingFaceEmbeddings(model_name=model_name, model_kwargs={'device': device}, encode_kwargs={'normalize_embeddings':True})
 
     return embedding_model
+
+def load_reranker_model(model_name, device='cpu'):
+    reranker_model = HuggingFaceCrossEncoder(model_name=model_name, model_kwargs={'device': device})
+
+    return reranker_model
 
 def load_ollama(model_name, temperature=0.1):
     model = ChatOllama(model=model_name, temperature=temperature)
