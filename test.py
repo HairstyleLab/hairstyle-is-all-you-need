@@ -14,7 +14,7 @@ from PIL import Image
 # from model.utils import load_hairfastgan, generate_hairstyle
 from model.utils import load_identiface, get_face_shape_and_gender
 
-file_path = "images/is.jpg"
+file_path = "uploaded_images/20251120_141825_6083535365b847acba02350f1855a19b.jpg"
 load_dotenv()
 
 # model = load_hairfastgan()
@@ -49,19 +49,22 @@ def encode_image_from_file(file_path):
         return f"data:{mime_type};base64,{base64.b64encode(image_content).decode('utf-8')}"
 
 agent = build_agent(model, client)
-encoded_image = encode_image_from_file(file_path)
 
 def make_human_message(input_text,session_id,file_path=None):
     if not file_path:
+        print('out image')
+        print(input_text)
         response = agent.invoke(
             {"input": [HumanMessage(content=[
                 {"type": "text", "text": input_text}
             ])]},
             config={"configurable": {"session_id": session_id}}
         )
-        print(response['output'])
+        # print(response['output'])
         
     else:
+        encoded_image = encode_image_from_file(file_path[0])
+        print('in image ', file_path[0])
         response = agent.invoke(
             {"input": [HumanMessage(content=[
                 {"type": "text", "text": input_text},
@@ -69,7 +72,9 @@ def make_human_message(input_text,session_id,file_path=None):
             ])]},
             config={"configurable": {"session_id": session_id}}
         )
-        print(response['output'])
+        # print(response['output'])
+    
+    return response
 
 q1 = "이 얼굴에 히피펌 헤어스타일에 애쉬그레이 컬러를 적용한 이미지를 생성해줄래?" # (이미지 생성시, 헤어스타일, 헤어컬러 둘 다 명시한 경우)
 q2 = "이 얼굴에 히피펌 헤어스타일을 적용한 이미지를 생성해줄래?" # (이미지 생성시, 헤어스타일만 명시한 경우)
@@ -80,6 +85,17 @@ q6 = "이 얼굴에 히피 펆 헤어스타일에 애시 그래 컬러를 적용
 q7 = "이 얼굴에 마이쮸펌 헤어스타일에 칙칙한 초코칩 컬러를 적용한 이미지를 생성해줄래?" # (이미지 생성 시 등록된 헤어스타일, 헤어컬러가 아닌 옵션으로 표현한 경우)
 
 # print(make_human_message("이 머리에 어울리는 헤어스타일 추천해줘", session_id="test_session1", file_path=file_path))
-print(make_human_message(q6, session_id="test_session2", file_path=file_path))
+# print(make_human_message(q6, session_id="test_session2", file_path=file_path))
 # print("\n\n테스트 완료!")
 
+# while True:
+#     query = input("질문: ") # 사용자 질문 입력
+#     if query.lower() in ["exit", "quit"]:
+#         print("챗봇을 종료합니다.")
+#         break
+#     file_check = input("이미지를 업로드할지 안할지 입력하시오.(y/n): ") # 사용자 질문 입력
+
+#     if file_check == "y":
+#         make_human_message(query, session_id="test_session2", file_path=file_path)
+#     else:
+#         make_human_message(query, session_id="test_session2", file_path=None)
