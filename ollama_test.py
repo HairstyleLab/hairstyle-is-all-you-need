@@ -85,14 +85,27 @@ q7 = "이 얼굴에 마이쮸펌 헤어스타일에 칙칙한 초코칩 컬러�
 # print(make_human_message(q6, session_id="test_session2", file_path=file_path))
 # print("\n\n테스트 완료!")
 
-while True:
-    query = input("질문: ") # 사용자 질문 입력
-    file_check = input("이미지를 업로드할지 안할지 입력하시오.(y/n): ") # 사용자 질문 입력
-    if query.lower() in ["exit", "quit"]:
-        print("챗봇을 종료합니다.")
-        break
+my_q1 = "지금 제 얼굴인데, 히피펌이 어울릴지 고민돼요. 이 얼굴에 히피펌을 적용한 이미지를 만들어줄 수 있을까요?"
+my_q2 = "오 잘 어울리는 것 같아요, 그러면 이 헤어스타일에 애쉬그레이 컬러도 적용해줄 수 있나요?, 제 피부톤이 쿨 톤이라서요"
+my_q3 = "이건 제 다른 사진인데요, 이 얼굴에 파란 컬러로 적용한 이미지를 만들어줄 수 있을까요?"
+my_q = [my_q1, my_q2]
 
-    if file_check == "y":
-        make_human_message(query, session_id="test_session2", file_path=file_path)
+
+# while True:
+#     query = input("질문: ") # 사용자 질문 입력
+#     file_check = input("이미지를 업로드할지 안할지 입력하시오.(y/n): ") # 사용자 질문 입력
+#     if query.lower() in ["exit", "quit"]:
+#         print("챗봇을 종료합니다.")
+#         break
+
+#     if file_check == "y":
+#         make_human_message(query, session_id="test_session2", file_path=file_path)
+#     else:
+#         make_human_message(query, session_id="test_session2", file_path=None)
+        
+for q in my_q:
+    if q == my_q1:
+        make_human_message(q, session_id="my_session", file_path=file_path)
     else:
-        make_human_message(query, session_id="test_session2", file_path=None)
+        make_human_message(q, session_id="my_session", file_path=None)
+make_human_message(my_q3, session_id="my_session2", file_path="images/is3.jpg")

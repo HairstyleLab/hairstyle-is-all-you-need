@@ -5,6 +5,7 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_classic.agents import AgentExecutor,create_tool_calling_agent
 from model.model_load import load_ollama
+import base64
 from model.tools import hairstyle_recommendation, hairstyle_generation, web_search, get_tool_list
 
 prompt = ChatPromptTemplate.from_messages(
@@ -65,7 +66,13 @@ prompt = ChatPromptTemplate.from_messages(
             - 스타일만 매칭됨 → hairstyle_generation_tool(hairstyle=…)  
             - 컬러만 매칭됨 → hairstyle_generation_tool(haircolor=…)  
             - 둘 다 매칭됨 → hairstyle_generation_tool(hairstyle=…, haircolor=…)
-
+            
+            
+            5)
+            이 말은 하지 마세요:
+            [이미지 미리보기](https://example.com/generated_image.jpg)  
+            (실제 이미지 링크는 시스템에서 자동으로 생성되며, 이는 예시입니다.)  
+            
             [3. 사용 가능한 옵션 목록]
 
             <헤어스타일>
@@ -103,7 +110,7 @@ class HairstyleAgent:
     
     def _build_agent(self):
         """내부 agent 생성"""
-        llm = load_ollama(model_name="qwen3-vl:30b", temperature=0)
+        llm = load_ollama(model_name="qwen3-vl:32b", temperature=0)
 
         # Tool 정의 - self.current_image_base64 사용
         @tool
@@ -125,7 +132,11 @@ class HairstyleAgent:
             if self.current_image_base64 is None:
                 return "오류: 이미지가 제공되지 않았습니다."
             print(f"[INFO] Tool 실행: Base64 길이 = {len(self.current_image_base64)}")
-            return hairstyle_generation(self.current_image_base64, hairstyle, haircolor, self.client)
+            #수정부분 -> result[0]은 텍스트, result[1]은 이미지
+            result = hairstyle_generation(self.current_image_base64, hairstyle, haircolor, self.client)
+            self.current_image_base64 = base64.b64encode(result[1]).decode("utf-8")  # 생성된 이미지로 업데이트
+            
+            return result[0]
 
         @tool
         def web_search_tool(query: str) -> str:
@@ -142,8 +153,8 @@ class HairstyleAgent:
             agent=agent,
             tools=tools,
             verbose=True,
-            max_iterations=10,
-            max_execution_time=60,
+            max_iterations=5,
+            max_execution_time=150,
             handle_parsing_errors=True,
         )
 
@@ -176,11 +187,16 @@ class HairstyleAgent:
             messages = inputs['input']
             for msg in messages:
                 if hasattr(msg, 'content') and isinstance(msg.content, list):
-                    for content in msg.content:
-                        if isinstance(content, dict) and content.get('type') == 'image_url':
-                            self.current_image_base64 = content['image_url']['url']
-                            print(f"[INFO] 이미지 감지! Base64 길이: {len(self.current_image_base64)}")
-                            break
+                    if any(isinstance(item, dict) and item.get("type") == "image_url" for item in msg.content):
+                        for content in msg.content:
+                            if isinstance(content, dict) and content.get('type') == 'image_url':
+                                self.current_image_base64 = content['image_url']['url']
+                                print(f"[INFO] 이미지 감지! Base64 길이: {len(self.current_image_base64)}")
+                                break
+                    else:
+                        if self.current_image_base64 is not None:
+                            print(f"[INFO] 이미지 유지! Base64 길이: {len(self.current_image_base64)}")
+                           
         
         # 원래 agent 실행
         return self.agent.invoke(inputs, config, **kwargs)
