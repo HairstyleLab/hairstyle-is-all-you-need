@@ -19,3 +19,5 @@ model/HairFastGAN/pretrained_models
 
 data
 rag/db
+uploaded_images
+generated_images
