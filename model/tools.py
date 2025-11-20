@@ -34,8 +34,9 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
 
     with open("config/hairstyle_list.json", "r", encoding="utf-8") as f:
         hairstyle_data = json.load(f)
-    
-    _, vectorstore = load_retriever("rag/db/all_merge_hf")
+
+    embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cpu")    
+    _, vectorstore = load_retriever("rag/db/all_merge_hf", embeddings)
 
     # 성별& 얼굴형 있으면
     if gender is not None and face_shape is not None :
@@ -149,10 +150,10 @@ def hairstyle_recommendation(model, image_base64, keywords=None,season=None):
         _, vectorstore = load_retriever("rag/db/all_merge_hf", embeddings=embeddings)        
         
         if season is not None:
-            seasonal_hairstyle_list = data['계절'][gender+season]
+            seasonal_hairstyle_list = hairstyle_data['계절'][gender+season]
         
         if keywords is None:
-            keywords = f"{face_shape}, {personal_color}, {'여자' if gender == 'Female' else '남자'}  
+            keywords = f"{face_shape}, {personal_color}, {'여자' if gender == 'Female' else '남자'}"
 
         for hairstyle in all_hairstyle_list:
             hairstyle_results = vectorstore.similarity_search_with_relevance_scores(query=keywords,k=1000,fetch_k=1000,filter={'gender':gender,'details':hairstyle})
@@ -261,13 +262,14 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, client=No
                     이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어컬러만 바뀌어야 해."""
         image = generate_image(client, prompt, image_path=temp_path, color_path=haircolor_path)
 
-    folder_path = "C:\\Users\\Playdata\\Desktop\\hairstyle-is-all-you-need\\results"
+    folder_path = "./results"
     path = len([file for file in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, file))])
     with open(f"results/{path}.jpg", "wb") as f:
         f.write(image)
 
     ## 수정부분 -> image 추가
-    return ("이미지 생성 완료. 이제 답변을 생성하세요", image)
+    # return ("이미지 생성 완료. 이제 답변을 생성하세요", image)
+    return "이미지 생성 완료. 이제 답변을 생성하세요"
 
 def safe_open(path):
     if path and os.path.exists(path):

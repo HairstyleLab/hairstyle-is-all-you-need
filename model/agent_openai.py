@@ -166,6 +166,7 @@ class HairstyleAgent:
         self.client = client
         self.last_inputs = None
         self.current_image_base64 = None  # 인스턴스별 이미지 저장
+        self.gen_flag = False             # 이미지 생성했는지 여부
         self.agent = self._build_agent()
     
     def _build_agent(self):
@@ -200,7 +201,10 @@ class HairstyleAgent:
             if self.current_image_base64 is None:
                 return "오류: 이미지가 제공되지 않았습니다."
             print(f"[INFO] Tool 실행: Base64 길이 = {len(self.current_image_base64)}")
-            return hairstyle_generation(self.current_image_base64, hairstyle, haircolor, self.client)
+
+            if res := hairstyle_generation(self.current_image_base64, hairstyle, haircolor, self.client):
+                self.gen_flag = True
+            return res
 
         @tool
         def web_search_tool(query: str) -> str:
@@ -234,8 +238,8 @@ class HairstyleAgent:
             agent=agent,
             tools=tools,
             verbose=True,
-            max_iterations=20,
-            max_execution_time=60,
+            max_iterations=30,
+            max_execution_time=120,
             handle_parsing_errors=True,
         )
 
