@@ -177,7 +177,7 @@ def main():
                 # assistant_text, assistant_image_paths = call_model(user_text, user_image_paths)
                 # if user_image_paths:
                 #     encoded_image = encode_image_from_file(user_image_paths[0])
-                assistant_response = make_human_message(user_text, 'test1', user_image_paths)
+                assistant_response, flag = make_human_message(user_text, 'test1', user_image_paths)
                 # import time
                 # time.sleep(2)
 
@@ -190,7 +190,7 @@ def main():
                     "role": "assistant",
                     "content": assistant_response['output'],
                     # "content": "test content",
-                    "images": f'results/{path}.jpg' if user_image_paths else None,
+                    "images": f'results/{path}.jpg' if flag else None,
                 }
             )
 
