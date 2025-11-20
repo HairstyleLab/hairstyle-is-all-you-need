@@ -5,7 +5,8 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_classic.agents import AgentExecutor,create_openai_tools_agent
 from model.model_load import load_openai
-from model.tools import hairstyle_recommendation, hairstyle_generation, web_search, get_tool_list,non_image_recommendation
+from model.tools import hairstyle_recommendation, hairstyle_generation, web_search, rag_search, get_tool_list, non_image_recommendation
+from langchain_community.tools import DuckDuckGoSearchRun
 
 prompt = ChatPromptTemplate.from_messages(
     [
@@ -101,8 +102,8 @@ prompt = ChatPromptTemplate.from_messages(
             - 위 두 흐름 외의 행동(모호한 답변, 텍스트로만 대처, 임의 판단)은 허용되지 않습니다.
 
             1) 이미지 확인  
-            - 현재 턴에 이미지가 업로드 되어있지 않으면 도구 호출 금지 → “얼굴 이미지를 업로드해 주세요”라고 안내
-
+            - 사용자가 이미지를 업로드하고 헤어스타일 “추천”을 요청하면 hairstyle_recommendation_tool() 도구 호출
+            
             2) 스타일/컬러 추출  
             - 사용자 문장에서  
             - 헤어스타일 최대 1개  
@@ -141,6 +142,10 @@ prompt = ChatPromptTemplate.from_messages(
             밀크브라운, 베이지브라운, 블루블랙, 애쉬그레이, 애쉬바이올렛, 애쉬베이지,
             애쉬브라운, 애쉬블론드, 애쉬블루, 애쉬카키, 애쉬퍼플,
             오렌지브라운, 올리브브라운, 초코브라운, 카키브라운, 쿠퍼브라운, 핑크브라운
+
+            [4. 예외 상황]
+            머리스타일과 무관한 질의 시, 자연스럽게 머리스타일에 관한 질문으로 연결하는 답변 생성
+            머리스타일과 무관한 질의 시, 다른 tool 사용하지 않고 직접 답변 생성
             """,
         ),
         ("placeholder", "{chat_history}"),
@@ -199,8 +204,25 @@ class HairstyleAgent:
 
         @tool
         def web_search_tool(query: str) -> str:
-            """웹 검색 도구"""
-            return web_search(query)
+            """
+            사용자가 얼굴형, 얼굴톤, 계절별 헤어스타일 추천 외의 요즘 유행하는 헤어스타일 같은 질의 시 해당 정보에 대해 웹 검색을 실행합니다.
+            결과는 항상 한국에서 나온 정보들만 사용합니다.
+            지금은 2025년도 입니다.
+            """
+            # return web_search(query)
+
+            search = DuckDuckGoSearchRun()
+            res = search.run(query)
+            return res
+
+        
+        @tool
+        def rag_search_tool(face_shape: str|None=None, season: str|None=None, tone: str|None=None):
+            """
+            사용자가 얼굴형, 얼굴톤, 계절별 헤어스타일 추천 질의 시 vectorDB 에서 검색을 수행합니다.
+            """
+
+            return rag_search(face_shape, season, tone)
         
         tools = get_tool_list(hairstyle_recommendation_tool,non_image_recommendation_tool, hairstyle_generation_tool, web_search_tool)
 
