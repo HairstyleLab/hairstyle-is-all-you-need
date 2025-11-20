@@ -8,7 +8,8 @@ import json
 from langchain_classic.agents import load_tools
 from langchain_tavily import TavilySearch
 # from model.utils import generate_hairstyle
-from model.utils import get_face_shape_and_gender, classify_personal_color,get_all_hairstyle,get_hairstyle_list,get_pc_list,get_seasonal_hairstyle_list,get_all_haircolor
+from model.utils import get_face_shape_and_gender, classify_personal_color
+# from model.utils import get_all_hairstyle,get_hairstyle_list,get_pc_list,get_seasonal_hairstyle_list,get_all_haircolor
 from rag.retrieval import load_retriever
 
 def skin_tone_choice(result):
@@ -108,6 +109,7 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, client=No
 
     with open('config/reference.json', 'r', encoding='utf-8') as f:
         reference = json.load(f)
+        
 
     image = None
     hairstyle_path = None
@@ -142,7 +144,8 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, client=No
     with open("results/output.jpg", "wb") as f:
         f.write(image)
 
-    return "이미지 생성 완료."
+    ## 수정부분 -> image 추가
+    return ("이미지 생성 완료. 이제 답변을 생성하세요", image)
 
 def safe_open(path):
     if path and os.path.exists(path):
