@@ -156,7 +156,9 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, client=No
                     이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어컬러만 바뀌어야 해."""
         image = generate_image(client, prompt, image_path=temp_path, color_path=haircolor_path)
 
-    with open("results/output.jpg", "wb") as f:
+    folder_path = "C:\\Users\\Playdata\\Desktop\\hairstyle-is-all-you-need\\results"
+    path = len([file for file in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, file))])
+    with open(f"results/{path}.jpg", "wb") as f:
         f.write(image)
 
     return "이미지 생성 완료."
@@ -185,7 +187,7 @@ def generate_image(client, prompt, image_path, shape_path=None, color_path=None)
 
     return image_bytes
 
-def web_search(query:str)->str:
+def web_search(query: str)->str:
     TAVILY_API_KEY=os.getenv("TAVILY_API_KEY")
     tool = TavilySearch(
         max_results=10,
@@ -199,6 +201,20 @@ def web_search(query:str)->str:
     for content in results['results']:
         final_result += f" {content['content']}"
     return final_result
+
+def rag_search(face_shape: str|None=None, season: str|None=None, tone: str|None=None):
+    embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cpu")
+    retriever, _ = load_retriever("rag/db/all_merge_hf", embeddings=embeddings, k=10)
+
+    res = []
+    if face_shape:
+        res += retriever.invoke(face_shape, filter={'category': 'face'}, k=3)
+    if season:
+        res += retriever.invoke(season, filter={'category': 'season'}, k=3)
+    if tone:
+        res += retriever.invoke(tone, filter={'category': 'skintone'}, k=3)
+    
+    return res
 
 def get_tool_list(*args):
     tools = load_tools(['dalle-image-generator'])
