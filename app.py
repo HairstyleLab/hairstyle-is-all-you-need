@@ -181,7 +181,7 @@ def main():
                 # import time
                 # time.sleep(2)
 
-            folder_path = "C:\\Users\\Playdata\\Desktop\\hairstyle-is-all-you-need\\results"
+            folder_path = "./results"
             path = len([file for file in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, file))]) - 1
 
             # 4) ASSISTANT 메시지 추가

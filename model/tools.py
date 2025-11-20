@@ -262,7 +262,7 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, client=No
                     이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어컬러만 바뀌어야 해."""
         image = generate_image(client, prompt, image_path=temp_path, color_path=haircolor_path)
 
-    folder_path = "C:\\Users\\Playdata\\Desktop\\hairstyle-is-all-you-need\\results"
+    folder_path = "./results"
     path = len([file for file in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, file))])
     with open(f"results/{path}.jpg", "wb") as f:
         f.write(image)
