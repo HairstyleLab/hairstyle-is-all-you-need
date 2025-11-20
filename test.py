@@ -51,6 +51,8 @@ def encode_image_from_file(file_path):
 agent = build_agent(model, client)
 
 def make_human_message(input_text,session_id,file_path=None):
+    agent.gen_flag=False
+
     if not file_path:
         print('out image')
         print(input_text)
@@ -74,7 +76,7 @@ def make_human_message(input_text,session_id,file_path=None):
         )
         # print(response['output'])
     
-    return response
+    return response, agent.gen_flag
 
 q1 = "이 얼굴에 히피펌 헤어스타일에 애쉬그레이 컬러를 적용한 이미지를 생성해줄래?" # (이미지 생성시, 헤어스타일, 헤어컬러 둘 다 명시한 경우)
 q2 = "이 얼굴에 히피펌 헤어스타일을 적용한 이미지를 생성해줄래?" # (이미지 생성시, 헤어스타일만 명시한 경우)
