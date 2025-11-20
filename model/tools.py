@@ -9,7 +9,9 @@ from math import inf
 from langchain_classic.agents import load_tools
 from langchain_tavily import TavilySearch
 # from model.utils import generate_hairstyle
+
 from model.utils import get_face_shape_and_gender, classify_personal_color,get_faceshape,get_weight
+from model.model_load import load_embedding_model, load_reranker_model
 from rag.retrieval import load_retriever
 
 def skin_tone_choice(result):
@@ -144,14 +146,14 @@ def hairstyle_recommendation(model, image_base64, keywords=None,season=None):
         hair_max_score, hair_min_score = -inf, inf
         color_max_score, color_min_score = -inf, inf
         
-
         if season is not None:
             seasonal_hairstyle_list = hairstyle_data['계절'][gender+season]
 
-        _, vectorstore = load_retriever("rag/db/all_merge_hf")
-        
         if keywords is None:
             keywords = f"{face_shape}, {personal_color}, {'여자' if gender == 'Female' else '남자'}"
+        
+        embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cpu")
+        _, vectorstore = load_retriever("rag/db/all_merge_hf", embeddings=embeddings)
 
         for hairstyle in all_hairstyle_list:
             hairstyle_results = vectorstore.similarity_search_with_relevance_scores(query=keywords,k=1000,fetch_k=1000,filter={'gender':gender,'details':hairstyle})
