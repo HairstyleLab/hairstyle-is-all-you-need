@@ -5,7 +5,7 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_classic.agents import AgentExecutor,create_openai_tools_agent
 from model.model_load import load_openai
-from model.tools import hairstyle_recommendation, hairstyle_generation, web_search, get_tool_list
+from model.tools import hairstyle_recommendation, hairstyle_generation, web_search, get_tool_list,non_image_recommendation
 
 prompt = ChatPromptTemplate.from_messages(
     [
@@ -17,7 +17,7 @@ prompt = ChatPromptTemplate.from_messages(
 
             [0. 도구 사용 필수 규칙]
 
-            - 사용자가 얼굴 이미지를 업로드하고 ‘추천’, ‘적용’, ‘변경’, ‘합성’, ‘이미지 생성’을 요청하면  
+            - 사용자가 ‘추천’, ‘적용’, ‘변경’, ‘합성’, ‘이미지 생성’을 요청하면  
             → 반드시 hairstyle_recommendation_tool 또는 hairstyle_generation_tool을 호출해야 합니다.
             - 이미지 기반 요청에서 다음과 같은 답변은 **절대 금지**됩니다.
             - “이미지를 생성할 수 없습니다.”
@@ -25,9 +25,43 @@ prompt = ChatPromptTemplate.from_messages(
             - “이미지를 인식할 수 없습니다.”
             - 위와 유사한 표현
 
-            [1. 헤어스타일 추천 요청]
+            [1. 이미지 없는 헤어스타일 추천 요청]
+            - 사용자가 이미지 없이 헤어스타일 "추천"을 요청하면 non_image_recommendation_tool() 도구 호출
 
-            - 사용자가 이미지를 업로드하고 “추천”을 요청하면 hairstyle_recommendation_tool() 도구 호출
+            **non_image_recommendation_tool() 도구 호출 시 기본 플로우**
+           1. 사용자 질의에서 성별, 얼굴형, 퍼스널컬러, 하고 싶은 헤어스타일 키워드, 계절 키워드가 있는지 확인
+           2. 사용자 질의에 성별과 얼굴형 언급이 있거나, 퍼스널컬러가 있으면 유의사항 확인해 파라미터로 전달하고 도구 호출
+           3. 도구로부터 얻은 정보를 응답에 활용
+
+           **도구 호출 시 유의사항**
+           - 사용자 질의에 퍼스널 컬러에 대한 언급이 있는 경우, 퍼스널 컬러를 다음 리스트 중에서 찾아서 personal_color 파라미터로 전달 → non_image_recommendation_tool(personal_color=...)
+             (퍼스널컬러 리스트: "봄 웜톤, 가을 웜톤, 겨울 쿨톤, 여름 쿨톤") 비슷한 말이 있으면 리스트 중에서 찾아서 전달
+           - 사용자 질의에 얼굴형에 대한 언급이 있는 경우, 얼굴형 리스트를 참고해 영어로 바꾼 후 face_shape 파라미터로 전달 → non_image_recommendation_tool(face_shape=...)
+             (얼굴형 리스트: "둥근형"→"Round", "사각형"→"Sqaure", "하트형"→"Heart", "계란형"→"Oval", "긴형"→"Oblong" )
+           - 사용자 질의에 성별에 대한 언급이 있는 경우, 여자는 "Female" 남자는 "Male"를 gender 파라미터로 전달 → non_image_recommendation_tool(gender=...)
+           - 도구 호출할 때 사용자 질의에 하고 싶은 머리 스타일에 관련된 키워드가 있는 경우, hairstyle_keywords 파라미터로 전달. 컬러는 제외. 키워드 없으면 전달 X→ non_image_recommendation_tool(hairstyle_keywords=...)
+            (예) 질의: 여름이 되었으니까 가벼운 머리를 하고싶어. 층을 좀 냈으면 좋겠지만 너무 지저분하진 않으면 좋겠어 어두운 색이나 톤 다운된 색으로 염색도 하고 싶어 → hairstyle_keywords="가벼운, 층 내는, 지저분하지 않은"
+           - 사용자 질의에 "봄, 여름, 가을, 겨울"의 키워드가 있는 경우, **계절**도 정확히 추출해 season 파라미터로 전달 → non_image_recommendation_tool(season=...)
+           - 도구 호출할 때 사용자 질의에 하고 싶은 머리 컬러에 관련된 키워드가 있는 경우, haircolor_keywords 파라미터로 전달. 키워드 없으면 전달 X→ non_image_recommendation_tool(haircolor_keywords=...)
+            (예) 질의: 여름이 되었으니까 가벼운 머리를 하고싶어. 층을 좀 냈으면 좋겠지만 너무 지저분하진 않으면 좋겠어 어두운 색이나 톤 다운된 색으로 염색도 하고 싶어 → haircolor_keywords="어두운, 톤 다운"
+
+           **예외상황**
+           1. 성별과 얼굴형, 퍼스널컬러가 모두 없는 경우, "성별과 얼굴형 또는 퍼스널컬러를 알려주셔야 헤어스타일 추천이 가능합니다. 다시 질의를 보내주세요"로 응답하고 마무리
+           2. 성별과 얼굴형 둘 중 하나만 있는 경우, 나머지 하나를 알려주어야한다고 답변하고 마무리 
+           (예)"성별을 알려주셔야 헤어스타일 추천이 가능합니다. 다시 질의를 보내주세요", "얼굴형을 알려주셔야 헤어스타일 추천이 가능합니다. 다시 질의를 보내주세요"
+
+           **답변 순서**
+           - 모든 설명은 지어내지말고 도구로부터 받은 값만을 활용해 생성. 사용자 질의를 일부 언급하며 자연스럽게 설명.
+           1. 얼굴형과 헤어스타일이 있는 경우 얼굴형과 얼굴형 특징을 4문장 이내로 설명한 후, 어울리는 헤어스타일 3문장 이내로 설명. 
+           - 얼굴형 설명에는 특정 커트를 언급하지 말고 지어내지말것. 도구로부터 받은 값만을 활용해 생성.
+           2. result_docs에 있는 헤어스타일이나 헤어컬러를 하나씩 차례대로 추천.
+           - 헤어스타일이 있으면, 각 헤어스타일을 하면 어떤 느낌을 줄 수 있는지 4문장 이내로 사용자 질의 내용을 고려해 자세히 설명. 
+           - 헤어컬러가 있으면, 각 헤어컬러로 염색하면 어떤 느낌이 나는지 특징에 대해 4문장 이내로 사용자 질의 내용을 고려해 자세히 설명.
+           4. 사진을 주시면 조금 더 세밀한 답변이 가능하다는 말로 마무리
+           5. 모든 답변은 반드시 한국어여야함
+
+           [2. 이미지 있는 헤어스타일 추천 요청]
+            - 사용자가 이미지를 업로드하고 헤어스타일 “추천”을 요청하면 hairstyle_recommendation_tool() 도구 호출
 
             **기본 플로우**
             1. 업로드된 이미지가 있는지 확인
@@ -40,12 +74,14 @@ prompt = ChatPromptTemplate.from_messages(
            (2) 이미지에 사람 얼굴이 없는 경우, "얼굴이 포함된 이미지를 첨부하셔야 이미지를 만들 수 있습니다. 확인 후 다른 사진을 업로드해주세요."라고 응답 후 마무리
            (3) 이미지에 사람이 여러명이 있는 경우, "이 이미지에는 2 명 이상의 얼굴이 포함되어 있습니다. 한 명만 나온 이미지를 업로드 해주세요."라고 응답 후 마무리
 
-           **도구 호출 시 유의사항**
-           - 도구 호출할 때 사용자 질의를 query 파라미터로 전달 → hairstyle_recommendation_tool(query=...)
-           - 사용자 질의에 "봄, 여름, 가을, 겨울"의 키워드가 있는 경우, **계절**도 정확히 추출해 season 파라미터로 전달 → hairstyle_recommendation_tool(query=..., season=...)
+           **유의사항**
+           - 도구 호출할 때 사용자 질의에 하고 싶은 머리에 관련된 키워드가 있는 경우, keywords 파라미터로 전달. 키워드 없으면 전달 X→ hairstyle_recommendation_tool(keywords=...)
+            (예) 질의: 여름이 되었으니까 가벼운 머리를 하고싶어. 층을 좀 냈으면 좋겠지만 너무 지저분하진 않으면 좋겠어 어두운 색이나 톤 다운된 색으로 염색도 하고 싶어 → keywords="가벼운, 층 내는, 지저분하지 않은, 어두운, 톤 다운"
+            
+           - 사용자 질의에 "봄, 여름, 가을, 겨울"의 키워드가 있는 경우, **계절**도 정확히 추출해 season 파라미터로 전달 → hairstyle_recommendation_tool(keywords=..., season=...)
 
-           **도구를 통해 받은 데이터를 이용한 답변 순서**
-           - 모든 설명은 지어내지말고 도구로부터 받은 값만을 활용해 생성. 사용자의 질의를 고려해 일부 키워드 언급.
+           **답변 순서**
+           - 모든 설명은 지어내지말고 도구로부터 받은 값만을 활용해 생성. keywords가 있으면 이를 고려해 일부 언급하며 자연스럽게 설명.
            1. 사용자 이미지를 통해 분석한 personal_color와 얼굴형을 간략히 언급한 후, 얼굴형에 어울리는 헤어스타일 3문장 이내로 설명. 
            - 얼굴형 설명에는 특정 커트를 언급하지 말고 지어내지말것. 도구로부터 받은 값만을 활용해 생성.
            2. hairstyle_docs에 있는 헤어스타일을 하나씩 차례대로 추천. 
@@ -123,6 +159,7 @@ class HairstyleAgent:
         """
         self.model = model
         self.client = client
+        self.last_inputs = None
         self.current_image_base64 = None  # 인스턴스별 이미지 저장
         self.agent = self._build_agent()
     
@@ -132,14 +169,22 @@ class HairstyleAgent:
         
         # Tool 정의 - self.current_image_base64 사용
         @tool
-        def hairstyle_recommendation_tool(query:str, season=None,action: str = "analyze"):
+        def hairstyle_recommendation_tool(keywords:str, season=None, action: str = "analyze"):
             """
             사용자의 요청에 따라 어울리는 헤어스타일 또는 헤어컬러를 찾아서 알려줍니다.
             """
             if self.current_image_base64 is None:
                 return "오류: 이미지가 제공되지 않았습니다."
             print(f"[INFO] Tool 실행: Base64 길이 = {len(self.current_image_base64)}")
-            return hairstyle_recommendation(self.model, self.current_image_base64, query, season)
+            return hairstyle_recommendation(self.model, self.current_image_base64, keywords, season)
+
+        @tool
+        def non_image_recommendation_tool(face_shape=None, gender=None, personal_color=None, season=None, hairstyle_keywords=None, haircolor_keywords=None):
+            """
+            이미지 없이 사용자 요청에 따라 어울리는 헤어스타일 또는 헤어컬러를 찾아서 알려줍니다.
+            """
+            print(f"[INFO] TOOL 실행 -> 키워드 얼굴형:{face_shape}, 성별:{gender}, 퍼컬: {personal_color}, 계절: {season}, 키워드:{hairstyle_keywords} {haircolor_keywords}")
+            return non_image_recommendation(face_shape, gender, personal_color, season, hairstyle_keywords, haircolor_keywords)
         
         @tool
         def hairstyle_generation_tool(hairstyle=None, haircolor=None):
@@ -157,7 +202,7 @@ class HairstyleAgent:
             """웹 검색 도구"""
             return web_search(query)
         
-        tools = get_tool_list(hairstyle_recommendation_tool, hairstyle_generation_tool, web_search_tool)
+        tools = get_tool_list(hairstyle_recommendation_tool,non_image_recommendation_tool, hairstyle_generation_tool, web_search_tool)
 
         # Agent 생성
         agent = create_openai_tools_agent(llm, tools, prompt)
@@ -167,7 +212,7 @@ class HairstyleAgent:
             agent=agent,
             tools=tools,
             verbose=True,
-            max_iterations=10,
+            max_iterations=20,
             max_execution_time=60,
             handle_parsing_errors=True,
         )
@@ -199,6 +244,7 @@ class HairstyleAgent:
         # 입력에서 이미지 추출
         if 'input' in inputs:
             messages = inputs['input']
+            self.last_inputs = messages
             for msg in messages:
                 if hasattr(msg, 'content') and isinstance(msg.content, list):
                     for content in msg.content:

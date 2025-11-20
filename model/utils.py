@@ -1,4 +1,5 @@
 import os
+import statistics
 import tensorflow as tf
 from PIL import Image
 from io import BytesIO
@@ -96,14 +97,14 @@ def classify_personal_color(rgb_tuple):
 
     if bstar >= B0:
         if V >= V0:
-            return "봄웜"
+            return "봄 웜톤"
         else:
-            return "가을웜"
+            return "가을 웜톤"
     else:
         if V >= V0:
-            return "여름쿨"
+            return "여름 쿨톤"
         else:
-            return "겨울쿨"
+            return "겨울 쿨톤"
         
 def get_faceshape(face_shape:str)->str:
     match face_shape:
@@ -117,3 +118,12 @@ def get_faceshape(face_shape:str)->str:
             return "긴형"
         case "Square":
             return "사각형"
+        
+def get_weight(max_value, min_value):
+    if max_value >0 and min_value >0:
+        weight = statistics.mean([max_value,min_value])
+    elif max_value>0 and min_value<0:
+        weight = max_value / 2
+    else:
+        weight = abs(max_value)
+    return weight
