@@ -268,8 +268,7 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, client=No
         f.write(image)
 
     ## 수정부분 -> image 추가
-    # return ("이미지 생성 완료. 이제 답변을 생성하세요", image)
-    return "이미지 생성 완료. 이제 답변을 생성하세요"
+    return ("이미지 생성 완료. 이제 답변을 생성하세요", image)
 
 def safe_open(path):
     if path and os.path.exists(path):
@@ -287,7 +286,9 @@ def generate_image(client, prompt, image_path, shape_path=None, color_path=None)
     result = client.images.edit(
         model="gpt-image-1",
         image=image_inputs,
-        prompt=prompt
+        prompt=prompt,
+        input_fidelity="high",
+        size="1024x1024"
     )
 
     image_base64 = result.data[0].b64_json
