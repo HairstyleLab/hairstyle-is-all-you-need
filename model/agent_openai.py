@@ -7,6 +7,7 @@ from langchain_classic.agents import AgentExecutor,create_openai_tools_agent
 from model.model_load import load_openai
 from model.tools import hairstyle_recommendation, hairstyle_generation, web_search, rag_search, get_tool_list, non_image_recommendation
 from langchain_community.tools import DuckDuckGoSearchRun
+import base64
 
 prompt = ChatPromptTemplate.from_messages(
     [
@@ -210,7 +211,9 @@ class HairstyleAgent:
 
             if res := hairstyle_generation(self.current_image_base64, hairstyle, haircolor, self.client):
                 self.gen_flag = True
-            return res
+            self.current_image_base64 = base64.b64encode(res[1]).decode('utf-8')
+            
+            return res[0]
 
         @tool
         def web_search_tool(query: str) -> str:
@@ -279,11 +282,15 @@ class HairstyleAgent:
             self.last_inputs = messages
             for msg in messages:
                 if hasattr(msg, 'content') and isinstance(msg.content, list):
-                    for content in msg.content:
-                        if isinstance(content, dict) and content.get('type') == 'image_url':
-                            self.current_image_base64 = content['image_url']['url']
-                            print(f"[INFO] 이미지 감지! Base64 길이: {len(self.current_image_base64)}")
-                            break
+                    if any(isinstance(content, dict) and content.get('type') == 'image_url' for content in msg.content):
+                        for content in msg.content:
+                            if isinstance(content, dict) and content.get('type') == 'image_url':
+                                self.current_image_base64 = content['image_url']['url']
+                                print(f"[INFO] 이미지 감지! Base64 길이: {len(self.current_image_base64)}")
+                                break
+                    else:
+                        if self.current_image_base64 is not None:
+                            print(f"[INFO] 이전 이미지 유지! Base64 길이: {len(self.current_image_base64)}")
         
         # 원래 agent 실행
         return self.agent.invoke(inputs, config, **kwargs)
