@@ -14,7 +14,7 @@ from PIL import Image
 # from model.utils import load_hairfastgan, generate_hairstyle
 from model.utils import load_identiface, get_face_shape_and_gender
 
-file_path = "uploaded_images/20251120_141825_6083535365b847acba02350f1855a19b.jpg"
+file_path = ["images/face1.jpg"]  # 테스트용 이미지 파일 경로
 load_dotenv()
 
 # model = load_hairfastgan()
@@ -62,7 +62,7 @@ def make_human_message(input_text,session_id,file_path=None):
             ])]},
             config={"configurable": {"session_id": session_id}}
         )
-        # print(response['output'])
+        print(response['output'])
         
     else:
         encoded_image = encode_image_from_file(file_path[0])
@@ -74,7 +74,7 @@ def make_human_message(input_text,session_id,file_path=None):
             ])]},
             config={"configurable": {"session_id": session_id}}
         )
-        # print(response['output'])
+        print(response['output'])
     
     return response, agent.gen_flag
 
@@ -101,3 +101,12 @@ q7 = "이 얼굴에 마이쮸펌 헤어스타일에 칙칙한 초코칩 컬러�
 #         make_human_message(query, session_id="test_session2", file_path=file_path)
 #     else:
 #         make_human_message(query, session_id="test_session2", file_path=None)
+
+file_list = [["images/j_1.jpg"], ["images/j_2.jpg"], ["images/j_3.jpg"], ["images/j_4.jpg"]]
+for i in range(4):
+    query = "이 얼굴에 히피펌이랑 애쉬그레이 컬러를 적용한 이미지를 생성해줄래?" # 사용자 질문 입력
+    if query.lower() in ["exit", "quit"]:
+        print("챗봇을 종료합니다.")
+        break
+    # 사용자 질문 입력
+    make_human_message(query, session_id="test_session2", file_path=file_list[i])
