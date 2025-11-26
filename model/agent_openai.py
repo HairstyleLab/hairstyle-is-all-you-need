@@ -152,6 +152,8 @@ prompt = ChatPromptTemplate.from_messages(
             여자 펌: C컬펌, S컬펌, 글램펌, 내츄럴펌, 러블리펌, 루즈펌, 리프펌, 물결펌, 바디펌, 발롱펌, 볼드펌, 볼륨매직, 볼륨펌,
                     빌드펌, 에어펌, 젤리펌, 지젤펌, 쿠션펌, 텍스처펌, 퍼피베이비펌, 허쉬펌_롱
 
+
+
             <헤어컬러>
             골드브라운, 다크브라운, 레드브라운, 레드와인, 로즈골드, 마르살라, 마호가니,
             밀크브라운, 베이지브라운, 블루블랙, 애쉬그레이, 애쉬바이올렛, 애쉬베이지,
@@ -209,7 +211,7 @@ class HairstyleAgent:
             return non_image_recommendation(face_shape, gender, personal_color, season, hairstyle_keywords, haircolor_keywords)
         
         @tool
-        def hairstyle_generation_tool(hairstyle=None, haircolor=None):
+        def hairstyle_generation_tool(hairstyle=None, haircolor=None, hairlength=None):
             """
             사용자의 요청에 따라 업로드된 이미지에 합성된 헤어스타일 또는 헤어컬러 이미지를 생성합니다.
             사용자가 제공한 기본 이미지 위에 원하는 헤어스타일과 헤어컬러를 합성합니다.
