@@ -1,75 +1,90 @@
 {
-  "헤어스타일": {
-    "남자": {
-      "컷": {
-        "가일컷": "data/man_haircut/가일컷/컷_가일컷_2.jpg",
-        "댄디컷": "data/man_haircut/댄디컷/컷_댄디컷_9.jpg",
-        "드랍컷": "data/man_haircut/드랍컷/컷_드랍컷_2.jpg",
-        "리젠트컷": "data/man_haircut/리젠트컷/컷_리젠트컷_2.jpg",
-        "리프컷": "data/man_haircut/리프컷/컷_리프컷_6.jpg",
-        "스왓컷": "data/man_haircut/스왓컷/컷_스왓컷_6.jpg",
-        "아이비리그컷": "data/man_haircut/아이비리그컷/컷_아이비리그컷_3.jpg",
-        "울프컷": "data/man_haircut/울프컷/컷_울프컷_1.jpg",
-        "크롭컷": "data/man_haircut/크롭컷/컷_크롭컷_1.jpg",
-        "포마드컷": "data/man_haircut/포마드컷_길/컷_포마드컷_1.jpg",
-        "짧은포마드컷": "data/man_haircut/포마드컷_짧/컷_짧은포마드컷_1.jpg",
-        "필러스컷": "data/man_haircut/필러스컷/컷_필러스컷_1.jpg"
+"헤어스타일": {
+  "남자": {
+    "컷": {
+      "가일컷": "data/man_haircut/가일컷",
+      "댄디컷": "data/man_haircut/댄디컷",
+      "드랍컷": "data/man_haircut/드랍컷",
+      "리젠트컷": "data/man_haircut/리젠트컷",
+      "리프컷": "data/man_haircut/리프컷",
+      "아이비리그컷": "data/man_haircut/아이비리그컷",
+      "울프컷": "data/man_haircut/울프컷",
+      "크롭컷": "data/man_haircut/크롭컷",
+      "포마드컷": "data/man_haircut/포마드컷_길",
+      "필러스컷": "data/man_haircut/필러스컷",
+      "버즈컷": "data/man_haircut/버즈컷",
+      "크루컷": "data/man_haircut/크루컷",
+      "슬릭백컷": "data/man_haircut/슬릭백컷",
+      "하이앤타이트컷": "data/man_haircut/하이앤타이트컷",
+      "투블럭컷": "data/man_haircut/투블럭컷",
+      "페이드컷": "data/man_haircut/페이드컷"
       },
-      "펌": {
-        "가르마펌": "data/man_perm/가르마펌/펌_가르마펌_01.jpg",
-        "가일펌": "data/man_perm/가일펌/펌_가일펌_01.jpg",
-        "댄디펌": "data/man_perm/댄디펌/펌_댄디펌_02.jpg",
-        "리젠트펌": "data/man_perm/리젠트펌/펌_리젠트펌_02.jpg",
-        "리프펌": "data/man_perm/리프펌/펌_리프펌_03.jpg",
-        "베이비펌": "data/man_perm/베이비펌/펌_베이비펌_02.jpeg",
-        "볼륨펌": "data/man_perm/볼륨펌/펌_볼륨펌_02.jpg",
-        "쉐도우펌": "data/man_perm/쉐도우펌/펌_쉐도우펌_03.jpg",
-        "스왈로펌": "data/man_perm/스왈로펌/펌_스왈로펌_03.jpg",
-        "애즈펌": "data/man_perm/애즈펌/펌_애즈펌_01.jpg",
-        "울프펌": "data/man_perm/울프펌/펌_울프펌_01.jpg",
-        "크리드펌": "data/man_perm/크리드펌/펌_크리드펌_01.jpg",
-        "포마드펌": "data/man_perm/포마드펌/펌_포마드펌_02.jpg",
-        "히피펌": "data/man_perm/히피펌/펌_히피펌_02.jpg"
+
+    "펌": {
+      "가르마펌": "data/man_perm/가르마펌",
+      "가일펌": "data/man_perm/가일펌",
+      "댄디펌": "data/man_perm/댄디펌",
+      "리젠트펌": "data/man_perm/리젠트펌",
+      "리프펌": "data/man_perm/리프펌",
+      "베이비펌": "data/man_perm/베이비펌",
+      "볼륨펌": "data/man_perm/볼륨펌",
+      "쉐도우펌": "data/man_perm/쉐도우펌",
+      "스왈로펌": "data/man_perm/스왈로펌",
+      "애즈펌": "data/man_perm/애즈펌",
+      "크리드펌": "data/man_perm/크리드펌",
+      "포마드펌": "data/man_perm/포마드펌",
+      "히피펌": "data/man_perm/히피펌",
+      "내추럴펌": "data/man_perm/내추럴펌",
+      "웨이브펌": "data/man_perm/웨이브펌"
       }
     },
-    "여자": {
-      "컷": {
-        "레이어드컷": "data/woman_haircut/레이어드컷/컷_레이어드컷_1.jpg",
-        "리프컷": "data/woman_haircut/리프컷/컷_리프컷_2.jpg",
-        "머쉬룸컷": "data/woman_haircut/머쉬룸컷/컷_머쉬룸컷_1.jpg",
-        "뱅헤어": "data/woman_haircut/뱅헤어/컷_뱅헤어_1.jpg",
-        "보브컷": "data/woman_haircut/보브컷/컷_보브컷_1.jpg",
-        "샤기컷": "data/woman_haircut/샤기컷/컷_샤기컷_1.jpg",
-        "원랭스컷": "data/woman_haircut/원랭스컷/컷_원랭스컷_1.jpg",
-        "픽시컷": "data/woman_haircut/픽시컷/컷_픽시컷_1.jpg",
-        "허쉬컷": "data/woman_haircut/허쉬컷/컷_허쉬컷_2.jpg",
-        "히메컷": "data/woman_haircut/히메컷/컷_히메컷_1.jpg"
+  "여자": {
+    "컷": {
+      "레이어드컷": "data/woman_haircut/레이어드컷",
+      "리프컷": "data/woman_haircut/리프컷",
+      "머쉬룸컷": "data/woman_haircut/머쉬룸컷",
+      "뱅헤어": "data/woman_haircut/뱅헤어",
+      "보브컷": "data/woman_haircut/보브컷",
+      "샤기컷": "data/woman_haircut/샤기컷",
+      "원랭스컷": "data/woman_haircut/원랭스컷",
+      "픽시컷": "data/woman_haircut/픽시컷",
+      "허쉬컷": "data/woman_haircut/허쉬컷",
+      "히메컷": "data/woman_haircut/히메컷"
       },
-      "펌": {
-        "C컬펌": "data/woman_perm/C컬펌/펌_C컬펌_1.jpg",
-        "S컬펌": "data/woman_perm/S컬펌/펌_S컬펌_1.jpg",
-        "글램펌": "data/woman_perm/글램펌/펌_글램펌_2.jpg",
-        "내츄럴펌": "data/woman_perm/내츄럴펌/펌_내츄럴펌_1.jpg",
-        "러블리펌": "data/woman_perm/러블리펌/펌_러블리펌_1.jpg",
-        "루즈펌": "data/woman_perm/루즈펌/펌_루즈펌_1.jpg",
-        "리프펌": "data/woman_perm/리프펌/펌_리프펌_1.jpg",
-        "물결펌": "data/woman_perm/물결펌/펌_물결펌_1.jpg",
-        "바디펌": "data/woman_perm/바디펌/펌_바디펌_1.jpg",
-        "발롱펌": "data/woman_perm/발롱펌/펌_발롱펌_1.jpg",
-        "볼드펌": "data/woman_perm/볼드펌/펌_볼드펌_1.jpg",
-        "볼륨매직": "data/woman_perm/볼륨매직/펌_볼륨매직_1.jpg",
-        "볼륨펌": "data/woman_perm/볼륨펌/펌_볼륨펌_1.jpg",
-        "빌드펌": "data/woman_perm/빌드펌/펌_빌드펌_1.jpg",
-        "에어펌": "data/woman_perm/에어펌/펌_에어펌_2.jpg",
-        "젤리펌": "data/woman_perm/젤리펌/펌_젤리펌_1.jpg",
-        "지젤펌": "data/woman_perm/지젤펌/펌_지젤펌_1.jpg",
-        "쿠션펌": "data/woman_perm/쿠션펌/펌_쿠션펌_1.jpg",
-        "텍스처펌": "data/woman_perm/텍스처펌/펌_텍스처펌_1.jpg",
-        "퍼피베이비펌": "data/woman_perm/퍼피베이비펌/펌_퍼피베이비펌_1.jpg",
-        "허쉬펌_롱": "data/woman_perm/허쉬펌/펌_허쉬펌_롱_1.jpg"
+      
+    "펌": {
+      "CS컬펌": "data/woman_perm/CS컬펌",
+      "C컬펌": "data/woman_perm/C컬펌",
+      "S컬펌": "data/woman_perm/S컬펌",
+      "글램펌": "data/woman_perm/글램펌",
+      "내츄럴펌": "data/woman_perm/내츄럴펌",
+      "디지털펌": "data/woman_perm/디지털펌",
+      "러블리펌": "data/woman_perm/러블리펌",
+      "레이어드펌": "data/woman_perm/레이어드펌",
+      "루즈펌": "data/woman_perm/루즈펌",
+      "리프펌": "data/woman_perm/리프펌",
+      "물결펌": "data/woman_perm/물결펌",
+      "믹스펌": "data/woman_perm/믹스펌",
+      "바디펌": "data/woman_perm/바디펌",
+      "발롱펌": "data/woman_perm/발롱펌",
+      "볼드펌": "data/woman_perm/볼드펌",
+      "볼륨매직": "data/woman_perm/볼륨매직",
+      "볼륨펌": "data/woman_perm/볼륨펌",
+      "빌드펌": "data/woman_perm/빌드펌",
+      "셋팅펌": "data/woman_perm/셋팅펌",
+      "스파이럴펌": "data/woman_perm/스파이럴펌",
+      "에어펌": "data/woman_perm/에어펌",
+      "젤리펌": "data/woman_perm/젤리펌",
+      "지젤펌": "data/woman_perm/지젤펌",
+      "쿠션펌": "data/woman_perm/쿠션펌",
+      "텍스처펌": "data/woman_perm/텍스처펌",
+      "퍼피베이비펌": "data/woman_perm/퍼피베이비펌",
+      "허쉬펌": "data/woman_perm/허쉬펌",
+      "히피펌": "data/woman_perm/히피펌"
       }
     }
   },
+
   "컬러": {
     "골드브라운": "data/color/골드브라운/골드브라운_1.jpg",
     "다크브라운": "data/color/다크브라운/다크브라운_1.jpg",
