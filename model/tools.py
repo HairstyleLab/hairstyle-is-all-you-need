@@ -22,8 +22,8 @@ def skin_tone_choice(result):
         return dominant_result
     else:
         return nondominant_result
-    
-def non_image_recommendation(face_shape=None, gender=None, personal_color=None, season=None, hairstyle_keywords=None, haircolor_keywords=None):
+
+def non_image_recommendation(face_shape=None, gender=None, personal_color=None, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None):
     
     scores = {'hair':[],'color':[]}
     results = {'hair':{},'color':{}}
@@ -35,12 +35,18 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
     with open("config/hairstyle_list.json", "r", encoding="utf-8") as f:
         hairstyle_data = json.load(f)
 
+    with open("config/hairstyle_length.json", "r", encoding="utf-8") as f:
+        hairstyle_length = json.load(f)
+
+    all_hairstyle_length = hairstyle_length['헤어스타일'][gender]
+
     embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cpu")    
     _, vectorstore = load_retriever("rag/db/all_merge_hf", embeddings)
 
     # 성별& 얼굴형 있으면
     if gender is not None and face_shape is not None :
         faceshape_hairstyle_list = hairstyle_data['얼굴형'][gender+face_shape]
+        faceshape_hairlength_list = hairstyle_data['얼굴형별 추천 기장'][gender+face_shape]
         # 얼굴형 특징 데이터 먼저 서치해서 문서에 담기
         korean_faceshape = get_faceshape(face_shape)
         faceshape_result = vectorstore.similarity_search_with_score(query=korean_faceshape,k=2,fetch_k=1000,filter={'details':korean_faceshape,'gender':gender})
@@ -48,7 +54,17 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
 
         # 키워드가 있으면 원래 로직대로 수행 ( keywords 검색해서 가중치 반영해서 계산해 정렬 )
         if hairstyle_keywords is not None:
-            all_hairstyle_list = hairstyle_data['전체 헤어스타일'][gender]
+            all_hairstyle_list = []
+
+            if hairlength_keywords:
+                for key, val in all_hairstyle_length.items():
+                    for sub_key, sub_val in val.items():
+                        if hairlength_keywords in sub_val:
+                            all_hairstyle_list.append(sub_key)
+            else:
+                for key, val in all_hairstyle_length.items():
+                    for sub_key, sub_val in val.items():
+                        all_hairstyle_list.append(sub_key)
 
             for hairstyle in all_hairstyle_list:
                 hairstyle_results = vectorstore.similarity_search_with_relevance_scores(query=hairstyle_keywords,k=1000,fetch_k=1000,filter={'gender':gender,'details':hairstyle})
@@ -69,11 +85,20 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
 
         # 키워드 없으면 키워드 gender와 얼굴형으로 해서 RAG에서 doc 서치해서 반환
         else:
-            for hairstyle in faceshape_hairstyle_list:
-                keywords = f'{gender} {face_shape}'
-                hair_result = vectorstore.similarity_search_with_relevance_scores(query=keywords, k=1, fetch_k=1000, filter={'details':hairstyle,'gender':gender})
-                result_docs[hairstyle] = [doc.page_content for doc,_ in hair_result]
-            
+            keywords = f'{gender} {face_shape}'
+            if hairlength_keywords:
+                for hairstyle in faceshape_hairstyle_list:
+                    for key, val in all_hairstyle_length.items():
+                        for sub_key, sub_val in val.items():
+                            if sub_key == hairstyle:
+                                if hairlength_keywords in sub_val:
+                                    hair_result = vectorstore.similarity_search_with_relevance_scores(query=keywords, k=1, fetch_k=1000, filter={'details':hairstyle,'gender':gender})
+                                    result_docs[hairstyle] = [doc.page_content for doc,_ in hair_result]
+            else:
+                for hairstyle in faceshape_hairstyle_list:
+                    hair_result = vectorstore.similarity_search_with_relevance_scores(query=keywords, k=1, fetch_k=1000, filter={'details':hairstyle,'gender':gender})
+                    result_docs[hairstyle] = [doc.page_content for doc,_ in hair_result]
+
     if personal_color is not None :
         haircolor_list = hairstyle_data['퍼스널컬러'][personal_color]
 
@@ -95,6 +120,7 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
             for haircolor in haircolor_list:
                 color_result = vectorstore.similarity_search_with_relevance_scores(query=personal_color, k=2, fetch_k=1000, filter={'details':haircolor})
                 result_docs[haircolor] = [doc.page_content for doc,_ in color_result]
+    
 
     # 가중치로 계산하기
     for idx, (category, value_dict) in enumerate(results.items()):
@@ -116,9 +142,19 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
                 color_result = vectorstore.similarity_search_with_relevance_scores(query=haircolor_keywords, k=1, fetch_k=1000, filter={'details':haircolor})
                 result_docs[haircolor] = [doc.page_content for doc,_ in color_result]
 
+    save_path = "rag_result_docs.txt"
+    with open(save_path, "w", encoding="utf-8") as f:
+        for key, docs in result_docs.items():
+            f.write(f"### {key}\n")
+            for idx, content in enumerate(docs, 1):
+                f.write(f"[{idx}] {content}\n")
+            f.write("\n")  # 구분 줄
+
+    print(f"[INFO] result_docs saved to: {save_path}")
+
     return result_docs
 
-def hairstyle_recommendation(model, image_base64, keywords=None,season=None):
+def hairstyle_recommendation(model, image_base64, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None):
     if image_base64.startswith('data:image'):
         image_data = base64.b64decode(image_base64.split(',')[1])
     else:
@@ -137,9 +173,24 @@ def hairstyle_recommendation(model, image_base64, keywords=None,season=None):
         with open("config/hairstyle_list.json", "r", encoding="utf-8") as f:
             hairstyle_data = json.load(f)
 
+        with open("config/hairstyle_length.json", "r", encoding="utf-8") as f:
+            hairstyle_length = json.load(f)
+
         scores = {'hair':[],'color':[]}
         results = {'hair':{},'color':{}}
-        all_hairstyle_list = hairstyle_data['전체 헤어스타일'][gender]
+        all_hairstyle_list = []
+        all_hairstyle_length = hairstyle_length['헤어스타일'][gender]
+
+        if hairlength_keywords:
+            for key, val in all_hairstyle_length.items():
+                for sub_key, sub_val in val.items():
+                    if hairlength_keywords in sub_val:
+                        all_hairstyle_list.append(sub_key)
+        else:
+            for key, val in all_hairstyle_length.items():
+                for sub_key, sub_val in val.items():
+                    all_hairstyle_list.append(sub_key)
+
         all_haircolor_list = hairstyle_data['전체 헤어스타일']['컬러']
         faceshape_hairstyle_list = hairstyle_data['얼굴형'][gender+face_shape]
         haircolor_list = hairstyle_data['퍼스널컬러'][personal_color]
@@ -152,11 +203,11 @@ def hairstyle_recommendation(model, image_base64, keywords=None,season=None):
         if season is not None:
             seasonal_hairstyle_list = hairstyle_data['계절'][gender+season]
         
-        if keywords is None:
-            keywords = f"{face_shape}, {personal_color}, {'여자' if gender == 'Female' else '남자'}"
+        if hairstyle_keywords is None:
+            keywords = f"{face_shape}, {'여자' if gender == 'Female' else '남자'}"
 
         for hairstyle in all_hairstyle_list:
-            hairstyle_results = vectorstore.similarity_search_with_relevance_scores(query=keywords,k=1000,fetch_k=1000,filter={'gender':gender,'details':hairstyle})
+            hairstyle_results = vectorstore.similarity_search_with_relevance_scores(query=hairstyle_keywords,k=1000,fetch_k=1000,filter={'gender':gender,'details':hairstyle})
             try:
                 avg_score = sum(score for _, score in hairstyle_results) / len(hairstyle_results)
                 face_score = 1 if hairstyle in faceshape_hairstyle_list else 0 
@@ -169,9 +220,12 @@ def hairstyle_recommendation(model, image_base64, keywords=None,season=None):
                 hair_min_score = min(avg_score,hair_min_score)
             except:
                 continue
-        
+
+        if haircolor_keywords is None:
+            keywords = f"{personal_color}"
+
         for haircolor in all_haircolor_list:
-            haircolor_results = vectorstore.similarity_search_with_relevance_scores(query=keywords,k=1000,fetch_k=1000,filter={"details":haircolor})
+            haircolor_results = vectorstore.similarity_search_with_relevance_scores(query=haircolor_keywords,k=1000,fetch_k=1000,filter={"details":haircolor})
             try:
                 color_avg_score = sum(score for _, score in haircolor_results) / len(haircolor_results)
                 pc_score = 1 if haircolor in haircolor_list else 0
@@ -196,20 +250,43 @@ def hairstyle_recommendation(model, image_base64, keywords=None,season=None):
 
         hairstyle_docs = {}
         for hairstyle, _ in hairstyles:
-            hair_result = vectorstore.similarity_search_with_relevance_scores(query=keywords, k=1, fetch_k=1000, filter={'details':hairstyle,'gender':gender})
+            hair_result = vectorstore.similarity_search_with_relevance_scores(query=hairstyle_keywords, k=1, fetch_k=1000, filter={'details':hairstyle,'gender':gender})
             hairstyle_docs[hairstyle] = [doc.page_content for doc,_ in hair_result]
 
         haircolor_docs = {}
         for haircolor, _ in haircolors:
-            color_result = vectorstore.similarity_search_with_relevance_scores(query=keywords, k=1, fetch_k=1000, filter={'details':haircolor})
+            color_result = vectorstore.similarity_search_with_relevance_scores(query=haircolor_keywords, k=1, fetch_k=1000, filter={'details':haircolor})
             haircolor_docs[haircolor] = [doc.page_content for doc,_ in color_result]
 
         faceshape_docs = {}
         korean_faceshape = get_faceshape(face_shape)
         faceshape_result = vectorstore.similarity_search_with_score(query=keywords,k=2,fetch_k=1000,filter={'details':korean_faceshape,'gender':gender})
         faceshape_docs[korean_faceshape] = [doc.page_content for doc,_ in faceshape_result]
-        
-        return faceshape_docs, personal_color, hairstyle_docs, haircolor_docs
+        summary = f"이 사람의 얼굴형은 {face_shape}, 성별은 {gender}이고 퍼스널컬러는 {personal_color}입니다."
+
+        output_dir = "recommendation_logs"
+        os.makedirs(output_dir, exist_ok=True)
+
+        def save_docs_to_txt(filename, docs_dict):
+            path = os.path.join(output_dir, filename)
+            with open(path, "w", encoding="utf-8") as f:
+                for key, docs in docs_dict.items():
+                    f.write(f"=== {key} ===\n")
+                    for doc in docs:
+                        f.write(doc)
+                        f.write("\n\n")
+            return path
+
+        faceshape_path = save_docs_to_txt("faceshape_docs.txt", faceshape_docs)
+        hairstyle_path = save_docs_to_txt("hairstyle_docs.txt", hairstyle_docs)
+        haircolor_path = save_docs_to_txt("haircolor_docs.txt", haircolor_docs)
+
+        print("Documents saved:")
+        print(f"- {faceshape_path}")
+        print(f"- {hairstyle_path}")
+        print(f"- {haircolor_path}")
+
+        return summary, faceshape_docs, personal_color, hairstyle_docs, haircolor_docs
         
     finally:
         os.unlink(temp_path)
