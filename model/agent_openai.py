@@ -187,7 +187,7 @@ class HairstyleAgent:
     
     def _build_agent(self):
         """내부 agent 생성"""
-        llm = load_openai(model_name="gpt-5", temperature=0)
+        llm = load_openai(model_name="gpt-4o", temperature=0)
         
         # Tool 정의 - self.current_image_base64 사용
         @tool

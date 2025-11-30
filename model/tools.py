@@ -3,15 +3,16 @@ import json
 import base64
 import tempfile
 import stone
-import base64
+from PIL import Image
 import json
 from math import inf
 from langchain_classic.agents import load_tools
 from langchain_tavily import TavilySearch
 # from model.utils import generate_hairstyle
-from model.utils import get_face_shape_and_gender, classify_personal_color,get_faceshape,get_weight
+from model.utils import get_face_shape_and_gender, classify_personal_color,get_faceshape, get_weight, face_crop, get_3d
 from model.model_load import load_embedding_model, load_reranker_model
 from rag.retrieval import load_retriever
+from model.utility.superresolution import get_high_resolution
 
 def skin_tone_choice(result):
     dominant_result = tuple(int(result['faces'][0]['dominant_colors'][0]['color'].lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
@@ -115,6 +116,13 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
             for haircolor, _ in haircolors:
                 color_result = vectorstore.similarity_search_with_relevance_scores(query=haircolor_keywords, k=1, fetch_k=1000, filter={'details':haircolor})
                 result_docs[haircolor] = [doc.page_content for doc,_ in color_result]
+
+    with open("result_docs.txt", "w", encoding="utf-8") as f:
+        for key, docs in result_docs.items():
+            f.write(f"=== {key} ===\n")
+            for doc in docs:
+                f.write(doc + "\n")
+            f.write("\n")
 
     return result_docs
 
@@ -228,10 +236,16 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, client=No
         temp_file.write(image_data)
         temp_path = temp_file.name
 
+    face = face_crop(image_file=temp_path)
+    face_upscale = get_high_resolution(face)
+
+    face_upscale = Image.fromarray(face_upscale)
+    face_upscale.save('upscaled.png')
+    processed_path = 'upscaled.png'
+
     with open('config/reference.json', 'r', encoding='utf-8') as f:
         reference = json.load(f)
         
-
     image = None
     hairstyle_path = None
     haircolor_path = None
@@ -252,22 +266,23 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, client=No
     if hairstyle_path and haircolor_path:
         prompt = """첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 바꾸고 세번째 이미지의 사람 헤어컬러를 적용해줘.
                     이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어스타일과 헤어컬러만 바뀌어야 해."""
-        image = generate_image(client, prompt, image_path=temp_path, shape_path=hairstyle_path, color_path=haircolor_path)
+        image = generate_image(client, prompt, image_path=processed_path, shape_path=hairstyle_path, color_path=haircolor_path)
     elif hairstyle_path and haircolor_path is None:
         prompt = """첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 적용해주고 헤어컬러는 기존 그대로 유지해줘.
                     이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어스타일만 바뀌어야 해."""
-        image = generate_image(client, prompt, image_path=temp_path, shape_path=hairstyle_path)
+        image = generate_image(client, prompt, image_path=processed_path, shape_path=hairstyle_path)
     elif haircolor_path and hairstyle_path is None:
         prompt = """첫번째 이미지의 사람 헤어컬러만 두번째 이미지의 사람 컬러로 바꿔줘.
                     이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어컬러만 바뀌어야 해."""
-        image = generate_image(client, prompt, image_path=temp_path, color_path=haircolor_path)
+        image = generate_image(client, prompt, image_path=processed_path, color_path=haircolor_path)
 
     folder_path = "./results"
     path = len([file for file in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, file))])
     with open(f"results/{path}.jpg", "wb") as f:
         f.write(image)
 
-    ## 수정부분 -> image 추가
+    get_3d(image_file=f"{path}.jpg", input_dir=folder_path)
+
     return ("이미지 생성 완료. 이제 답변을 생성하세요", image)
 
 def safe_open(path):
