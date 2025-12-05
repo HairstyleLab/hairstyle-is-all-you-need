@@ -172,7 +172,7 @@ prompt = ChatPromptTemplate.from_messages(
 
 class HairstyleAgent:
     """헤어스타일 추천 Agent - 각 인스턴스가 독립적인 이미지 저장소를 가짐"""
-    
+
     def __init__(self, model, client):
         """
         Args:
@@ -183,11 +183,12 @@ class HairstyleAgent:
         self.last_inputs = None
         self.current_image_base64 = None  # 인스턴스별 이미지 저장
         self.gen_flag = False             # 이미지 생성했는지 여부
+        self.status_callback = None       # 상태 콜백 함수
         self.agent = self._build_agent()
     
     def _build_agent(self):
         """내부 agent 생성"""
-        llm = load_openai(model_name="gpt-5", temperature=0)
+        llm = load_openai(model_name="gpt-4o", temperature=0)
         
         # Tool 정의 - self.current_image_base64 사용
         @tool
@@ -198,7 +199,7 @@ class HairstyleAgent:
             if self.current_image_base64 is None:
                 return "오류: 이미지가 제공되지 않았습니다."
             print(f"[INFO] Tool 실행: Base64 길이 = {len(self.current_image_base64)}")
-            return hairstyle_recommendation(self.model, self.current_image_base64, keywords, season)
+            return hairstyle_recommendation(self.model, self.current_image_base64, keywords, season, status_callback=self.status_callback)
 
         @tool
         def non_image_recommendation_tool(face_shape=None, gender=None, personal_color=None, season=None, hairstyle_keywords=None, haircolor_keywords=None):
@@ -206,8 +207,8 @@ class HairstyleAgent:
             이미지 없이 사용자 요청에 따라 어울리는 헤어스타일 또는 헤어컬러를 찾아서 알려줍니다.
             """
             print(f"[INFO] TOOL 실행 -> 키워드 얼굴형:{face_shape}, 성별:{gender}, 퍼컬: {personal_color}, 계절: {season}, 키워드:{hairstyle_keywords} {haircolor_keywords}")
-            return non_image_recommendation(face_shape, gender, personal_color, season, hairstyle_keywords, haircolor_keywords)
-        
+            return non_image_recommendation(face_shape, gender, personal_color, season, hairstyle_keywords, haircolor_keywords, status_callback=self.status_callback)
+
         @tool
         def hairstyle_generation_tool(hairstyle=None, haircolor=None):
             """
@@ -218,10 +219,10 @@ class HairstyleAgent:
                 return "오류: 이미지가 제공되지 않았습니다."
             print(f"[INFO] Tool 실행: Base64 길이 = {len(self.current_image_base64)}")
 
-            if res := hairstyle_generation(self.current_image_base64, hairstyle, haircolor, self.client):
+            if res := hairstyle_generation(self.current_image_base64, hairstyle, haircolor, self.client, status_callback=self.status_callback):
                 self.gen_flag = True
             self.current_image_base64 = base64.b64encode(res[1]).decode('utf-8')
-            
+
             return res[0]
 
         @tool
