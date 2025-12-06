@@ -23,8 +23,12 @@ def skin_tone_choice(result):
     else:
         return nondominant_result
     
-def non_image_recommendation(face_shape=None, gender=None, personal_color=None, season=None, hairstyle_keywords=None, haircolor_keywords=None):
-    
+def non_image_recommendation(face_shape=None, gender=None, personal_color=None, season=None, hairstyle_keywords=None, haircolor_keywords=None, status_callback=None):
+
+    # 상태 전송
+    if status_callback:
+        status_callback("추천 헤어스타일 검색 중...")
+
     scores = {'hair':[],'color':[]}
     results = {'hair':{},'color':{}}
     result_docs = {}
@@ -118,16 +122,21 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
 
     return result_docs
 
-def hairstyle_recommendation(model, image_base64, keywords=None,season=None):
+def hairstyle_recommendation(model, image_base64, keywords=None,season=None, status_callback=None):
+
+    # 상태 전송
+    if status_callback:
+        status_callback("추천 헤어스타일 검색 중...")
+
     if image_base64.startswith('data:image'):
         image_data = base64.b64decode(image_base64.split(',')[1])
     else:
         image_data = base64.b64decode(image_base64)
-    
+
     with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
         temp_file.write(image_data)
         temp_path = temp_file.name
-    
+
     try:
         result = stone.process(temp_path, image_type='color',return_report_image=False,tone_palette='perla')
         skin_tone = skin_tone_choice(result)
@@ -218,12 +227,17 @@ def hairstyle_recommendation(model, image_base64, keywords=None,season=None):
 #     result = generate_hairstyle(model, face_img, shape_img, color_img)
 #     return result
 
-def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, client=None):
+def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, client=None, status_callback=None):
+
+    # 상태 전송
+    if status_callback:
+        status_callback("이미지 생성 중...")
+
     if image_base64.startswith('data:image'):
         image_data = base64.b64decode(image_base64.split(',')[1])
     else:
         image_data = base64.b64decode(image_base64)
-    
+
     with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
         temp_file.write(image_data)
         temp_path = temp_file.name
@@ -263,6 +277,10 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, client=No
         image = generate_image(client, prompt, image_path=temp_path, color_path=haircolor_path)
 
     folder_path = "./results"
+
+    # results 폴더가 없으면 생성
+    os.makedirs(folder_path, exist_ok=True)
+
     path = len([file for file in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, file))])
     with open(f"results/{path}.jpg", "wb") as f:
         f.write(image)
@@ -287,7 +305,6 @@ def generate_image(client, prompt, image_path, shape_path=None, color_path=None)
         model="gpt-image-1",
         image=image_inputs,
         prompt=prompt,
-        input_fidelity="high",
         size="1024x1024"
     )
 
