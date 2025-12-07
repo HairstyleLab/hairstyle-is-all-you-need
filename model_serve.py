@@ -36,14 +36,14 @@ class QueryResponse(BaseModel):
     generated_image: str | None = None  # 생성된 이미지 (base64)
 
 # SSE 스트리밍 엔드포인트
-@app.get("/query/stream")
-async def query_stream(query: str, session_id: str = "default", image_path: str | None = None):
+@app.post("/query/stream")
+async def query_stream(request: QueryRequest):
     """SSE를 통한 실시간 상태 스트리밍"""
 
     async def event_generator():
         # 세션별 큐 생성
         queue = Queue()
-        status_queues[session_id] = queue
+        status_queues[request.session_id] = queue
 
         # 상태 전송 함수
         def send_status(status: str):
@@ -57,26 +57,26 @@ async def query_stream(query: str, session_id: str = "default", image_path: str 
             try:
                 send_status("응답 수신 중...")
 
-                if image_path:
-                    if image_path.startswith("data:"):
-                        encoded_image = image_path
+                if request.image_path:
+                    if request.image_path.startswith("data:"):
+                        encoded_image = request.image_path
                         send_status("이미지 분석 중...")
                     else:
-                        encoded_image = encode_image_from_file(image_path)
+                        encoded_image = encode_image_from_file(request.image_path)
                         send_status("이미지 분석 중...")
 
                     message = HumanMessage(content=[
-                        {"type": "text", "text": query},
+                        {"type": "text", "text": request.query},
                         {"type": "image_url", "image_url": {"url": encoded_image}}
                     ])
                 else:
                     message = HumanMessage(content=[
-                        {"type": "text", "text": query}
+                        {"type": "text", "text": request.query}
                     ])
 
                 response = agent.invoke(
                     {"input": [message]},
-                    config={"configurable": {"session_id": session_id}}
+                    config={"configurable": {"session_id": request.session_id}}
                 )
 
                 send_status("답변 정리 중...")
@@ -118,8 +118,8 @@ async def query_stream(query: str, session_id: str = "default", image_path: str 
                 await asyncio.sleep(0.1)
 
         # 큐 정리
-        if session_id in status_queues:
-            del status_queues[session_id]
+        if request.session_id in status_queues:
+            del status_queues[request.session_id]
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
