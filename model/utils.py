@@ -193,6 +193,21 @@ def face_crop(image_file, crop_size=256):
         face_crop_course, face_bbox_course, lmk68 = faceCropper.detect_face_simple(image)
         face_crop_refine, face_bbox_refine = faceCropper.refineCrop(face_crop_course, face_bbox_course)
 
+        # Extend crop area vertically for longer hairstyles
+        # face_bbox_refine: [start_y, end_y, start_x, end_x]
+        height = face_bbox_refine[1] - face_bbox_refine[0]
+        width = face_bbox_refine[3] - face_bbox_refine[2]
+
+        # Add extra margin to top and bottom
+        extra_top = int(height * 0.3)
+        extra_bottom = int(height * 0.2)
+
+        new_start_y = max(0, face_bbox_refine[0] - extra_top)
+        new_end_y = min(np.array(image).shape[0], face_bbox_refine[1] + extra_bottom)
+
+        # Re-crop from original image with extended vertical bounds
+        face_crop_refine = np.array(image)[new_start_y:new_end_y, face_bbox_refine[2]:face_bbox_refine[3]]
+
     face_crop_refine = pad_to_square(face_crop_refine)
     face_tensor = np.array(face_crop_refine).astype(np.float32) / 255.0
     face_tensor = torch.from_numpy(np.transpose(face_tensor, (2, 0, 1))).unsqueeze(0)
@@ -232,8 +247,8 @@ def smart_resize(image):
     dim2 = int(512 * wpercent)
 
     if min_indx == 0:
-      image = np.array(Image.fromarray(image).resize((dim2, dim1), Image.ANTIALIAS, ))
+      image = np.array(Image.fromarray(image).resize((dim2, dim1), Image.LANCZOS, ))
     else:
-      image = np.array(Image.fromarray(image).resize((dim1, dim2), Image.ANTIALIAS, ))
+      image = np.array(Image.fromarray(image).resize((dim1, dim2), Image.LANCZOS, ))
 
   return image

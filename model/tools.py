@@ -1,10 +1,12 @@
 import os
+import sys
 import json
 import base64
 import tempfile
 import stone
 from PIL import Image
-import json
+import numpy as np
+from io import BytesIO
 from math import inf
 from langchain_classic.agents import load_tools
 from langchain_tavily import TavilySearch
@@ -13,6 +15,8 @@ from model.utils import get_face_shape_and_gender, classify_personal_color,get_f
 from model.model_load import load_embedding_model, load_reranker_model
 from rag.retrieval import load_retriever
 from model.utility.superresolution import get_high_resolution
+from model.utility.white_balance import white_balance
+from model.utility.face_swap import face_swap
 
 def skin_tone_choice(result):
     dominant_result = tuple(int(result['faces'][0]['dominant_colors'][0]['color'].lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
@@ -131,9 +135,13 @@ def hairstyle_recommendation(model, image_base64, keywords=None,season=None):
         image_data = base64.b64decode(image_base64.split(',')[1])
     else:
         image_data = base64.b64decode(image_base64)
-    
+
+    img = Image.open(BytesIO(image_data))
+    img_array = white_balance(np.array(img))
+    img = Image.fromarray(img_array)
+
     with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
-        temp_file.write(image_data)
+        img.save(temp_file.name)
         temp_path = temp_file.name
     
     try:
@@ -231,59 +239,75 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, client=No
         image_data = base64.b64decode(image_base64.split(',')[1])
     else:
         image_data = base64.b64decode(image_base64)
-    
+
     with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
         temp_file.write(image_data)
         temp_path = temp_file.name
 
-    face = face_crop(image_file=temp_path)
-    face_upscale = get_high_resolution(face)
+    try:
+        face = face_crop(image_file=temp_path)
+        face_upscale = get_high_resolution(face)
 
-    face_upscale = Image.fromarray(face_upscale)
-    face_upscale.save('upscaled.png')
-    processed_path = 'upscaled.png'
+        face_upscale_img = Image.fromarray(face_upscale)
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as temp_upscale:
+            face_upscale_img.save(temp_upscale.name)
+            processed_path = temp_upscale.name
 
-    with open('config/reference.json', 'r', encoding='utf-8') as f:
-        reference = json.load(f)
-        
-    image = None
-    hairstyle_path = None
-    haircolor_path = None
-    hairstyle_dict = reference.get("헤어스타일", {})
+        with open('config/reference.json', 'r', encoding='utf-8') as f:
+            reference = json.load(f)
 
-    if hairstyle:
-        for gender in hairstyle_dict.values():
-            for category in gender.values():
-                if hairstyle in category:
-                    hairstyle_path = category[hairstyle]
+        image = None
+        hairstyle_path = None
+        haircolor_path = None
+        hairstyle_dict = reference.get("헤어스타일", {})
+
+        if hairstyle:
+            for gender in hairstyle_dict.values():
+                for category in gender.values():
+                    if hairstyle in category:
+                        hairstyle_path = category[hairstyle]
+                        break
+                if hairstyle_path:
                     break
-            if hairstyle_path:
-                break
-    if haircolor:
-        color_dict = reference.get("컬러", {})
-        haircolor_path = color_dict.get(haircolor, None)
+        if haircolor:
+            color_dict = reference.get("컬러", {})
+            haircolor_path = color_dict.get(haircolor, None)
 
-    if hairstyle_path and haircolor_path:
-        prompt = """첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 바꾸고 세번째 이미지의 사람 헤어컬러를 적용해줘.
-                    이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어스타일과 헤어컬러만 바뀌어야 해."""
-        image = generate_image(client, prompt, image_path=processed_path, shape_path=hairstyle_path, color_path=haircolor_path)
-    elif hairstyle_path and haircolor_path is None:
-        prompt = """첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 적용해주고 헤어컬러는 기존 그대로 유지해줘.
-                    이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어스타일만 바뀌어야 해."""
-        image = generate_image(client, prompt, image_path=processed_path, shape_path=hairstyle_path)
-    elif haircolor_path and hairstyle_path is None:
-        prompt = """첫번째 이미지의 사람 헤어컬러만 두번째 이미지의 사람 컬러로 바꿔줘.
-                    이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어컬러만 바뀌어야 해."""
-        image = generate_image(client, prompt, image_path=processed_path, color_path=haircolor_path)
+        if hairstyle_path and haircolor_path:
+            prompt = """첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 바꾸고 세번째 이미지의 사람 헤어컬러를 적용해줘.
+                        이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어스타일과 헤어컬러만 바뀌어야 해."""
+            image = generate_image(client, prompt, image_path=processed_path, shape_path=hairstyle_path, color_path=haircolor_path)
+        elif hairstyle_path and haircolor_path is None:
+            prompt = """첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 적용해주고 헤어컬러는 기존 그대로 유지해줘.
+                        이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어스타일만 바뀌어야 해."""
+            image = generate_image(client, prompt, image_path=processed_path, shape_path=hairstyle_path)
+        elif haircolor_path and hairstyle_path is None:
+            prompt = """첫번째 이미지의 사람 헤어컬러만 두번째 이미지의 사람 컬러로 바꿔줘.
+                        이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어컬러만 바뀌어야 해."""
+            image = generate_image(client, prompt, image_path=processed_path, color_path=haircolor_path)
 
-    folder_path = "./results"
-    path = len([file for file in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, file))])
-    with open(f"results/{path}.jpg", "wb") as f:
-        f.write(image)
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_gen:
+            temp_gen.write(image)
+            temp_gen_path = temp_gen.name
 
-    get_3d(image_file=f"{path}.jpg", input_dir=folder_path)
+        swapped_face = face_swap(processed_path, temp_gen_path)
 
-    return ("이미지 생성 완료. 이제 답변을 생성하세요", image)
+        folder_path = "./results"
+        path = len([file for file in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, file))])
+        with open(f"results/{path}.jpg", "wb") as f:
+            f.write(swapped_face)
+
+        # get_3d(image_file=f"{path}.jpg", input_dir=folder_path)
+
+        return ("이미지 생성 완료. 이제 답변을 생성하세요", image)
+
+    finally:
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
+        if 'processed_path' in locals() and os.path.exists(processed_path):
+            os.unlink(processed_path)
+        if 'temp_gen_path' in locals() and os.path.exists(temp_gen_path):
+            os.unlink(temp_gen_path)
 
 def safe_open(path):
     if path and os.path.exists(path):
@@ -302,7 +326,6 @@ def generate_image(client, prompt, image_path, shape_path=None, color_path=None)
         model="gpt-image-1",
         image=image_inputs,
         prompt=prompt,
-        input_fidelity="high",
         size="1024x1024"
     )
 
