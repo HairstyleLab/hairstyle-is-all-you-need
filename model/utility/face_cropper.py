@@ -103,7 +103,7 @@ class FaceCropper(object):
 
     def refineCrop(self , image , bbox_course):
         crop_refine, bbox_refine = segment.returnfacebbox(np.array(image), msk_type='full',
-                                                                          getbbox=True, margin=0.1)
+                                                                          getbbox=True, margin=0.5)
         final_bbox = [bbox_course[0] + bbox_refine[0],
                       bbox_course[0] + bbox_refine[1],
                       bbox_course[2] + bbox_refine[2],
