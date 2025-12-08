@@ -15,7 +15,7 @@ from model.utils import get_face_shape_and_gender, classify_personal_color,get_f
 from model.model_load import load_embedding_model, load_reranker_model
 from rag.retrieval import load_retriever
 from model.utility.superresolution import get_high_resolution
-from model.utility.white_balance import white_balance
+from model.utility.white_balance import grayworld_white_balance
 from model.utility.face_swap import face_swap
 
 def skin_tone_choice(result):
@@ -29,7 +29,6 @@ def skin_tone_choice(result):
         return nondominant_result
     
 def non_image_recommendation(face_shape=None, gender=None, personal_color=None, season=None, hairstyle_keywords=None, haircolor_keywords=None):
-    
     scores = {'hair':[],'color':[]}
     results = {'hair':{},'color':{}}
     result_docs = {}
@@ -137,8 +136,9 @@ def hairstyle_recommendation(model, image_base64, keywords=None,season=None):
         image_data = base64.b64decode(image_base64)
 
     img = Image.open(BytesIO(image_data))
-    img_array = white_balance(np.array(img))
-    img = Image.fromarray(img_array)
+    img_array = np.array(img)
+    balanced_array = grayworld_white_balance(img_array)
+    img = Image.fromarray(balanced_array)
 
     with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
         img.save(temp_file.name)
@@ -297,7 +297,7 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, client=No
         with open(f"results/{path}.jpg", "wb") as f:
             f.write(swapped_face)
 
-        # get_3d(image_file=f"{path}.jpg", input_dir=folder_path)
+        get_3d(image_file=f"{path}.jpg", input_dir=folder_path)
 
         return ("이미지 생성 완료. 이제 답변을 생성하세요", image)
 

@@ -257,7 +257,7 @@ class HairstyleAgent:
             tools=tools,
             verbose=True,
             max_iterations=30,
-            max_execution_time=120,
+            max_execution_time=300,
             handle_parsing_errors=True,
         )
 
