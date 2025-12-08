@@ -27,15 +27,17 @@ def skin_tone_choice(result):
         return dominant_result
     else:
         return nondominant_result
-    
-def non_image_recommendation(face_shape=None, gender=None, personal_color=None, season=None, hairstyle_keywords=None, haircolor_keywords=None):
+ 
+def non_image_recommendation(face_shape=None, gender=None, personal_color=None, season=None, hairstyle_keywords=None, haircolor_keywords=None, status_callback=None):
+    # 상태 전송
+    if status_callback:
+        status_callback("추천 헤어스타일 검색 중...")
     scores = {'hair':[],'color':[]}
     results = {'hair':{},'color':{}}
     result_docs = {}
-    weight = []
+    weight = {'hair': 0,'color': 0}
     hair_max_score, hair_min_score = -inf, inf
     color_max_score, color_min_score = -inf, inf
-
     with open("config/hairstyle_list.json", "r", encoding="utf-8") as f:
         hairstyle_data = json.load(f)
 
@@ -49,7 +51,6 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
         korean_faceshape = get_faceshape(face_shape)
         faceshape_result = vectorstore.similarity_search_with_score(query=korean_faceshape,k=2,fetch_k=1000,filter={'details':korean_faceshape,'gender':gender})
         result_docs[korean_faceshape] = [doc.page_content for doc,_ in faceshape_result]
-
         # 키워드가 있으면 원래 로직대로 수행 ( keywords 검색해서 가중치 반영해서 계산해 정렬 )
         if hairstyle_keywords is not None:
             all_hairstyle_list = hairstyle_data['전체 헤어스타일'][gender]
@@ -69,7 +70,8 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
                     hair_min_score = min(avg_score,hair_min_score)
                 except:
                     continue
-            weight.append(get_weight(hair_max_score,hair_min_score))
+            # weight.append(get_weight(hair_max_score,hair_min_score))
+            weight['hair'] = get_weight(hair_max_score,hair_min_score)
 
         # 키워드 없으면 키워드 gender와 얼굴형으로 해서 RAG에서 doc 서치해서 반환
         else:
@@ -83,18 +85,18 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
 
         if haircolor_keywords is not None:    # 느낌에 관련된 키워드가 있으면 
             all_haircolor_list = hairstyle_data['전체 헤어스타일']['컬러']
-
             for haircolor in all_haircolor_list:
                 haircolor_results = vectorstore.similarity_search_with_relevance_scores(query=haircolor_keywords,k=1000,fetch_k=1000,filter={"details":haircolor})
                 try:
                     color_avg_score = sum(score for _, score in haircolor_results) / len(haircolor_results)
                     pc_score = 1 if haircolor in haircolor_list else 0
                     results['color'][haircolor] = [color_avg_score,pc_score]
-                    color_max_score = max(avg_score,color_max_score)
-                    color_min_score = min(avg_score,color_min_score)
+                    color_max_score = max(color_avg_score,color_max_score)
+                    color_min_score = min(color_avg_score,color_min_score)
                 except:
                     continue
-            weight.append(get_weight(color_max_score,color_min_score))
+            # weight.append(get_weight(color_max_score,color_min_score))
+            weight['color'] = get_weight(color_max_score,color_min_score)
         else:
             for haircolor in haircolor_list:
                 color_result = vectorstore.similarity_search_with_relevance_scores(query=personal_color, k=2, fetch_k=1000, filter={'details':haircolor})
@@ -104,9 +106,9 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
     for idx, (category, value_dict) in enumerate(results.items()):
         for hairstyle, score_list in value_dict.items():
             if category == "color":
-                scores[category].append([hairstyle, score_list[0] + weight[idx] * score_list[1] ])
+                scores[category].append([hairstyle, score_list[0] + weight[category] * score_list[1] ])
             else:
-                scores[category].append([hairstyle, score_list[0] + weight[idx] * score_list[1] + weight[idx] * score_list[2]])
+                scores[category].append([hairstyle, score_list[0] + weight[category] * score_list[1] + weight[category] * score_list[2]])
     
     if len(results['hair'])!=0 or len(results['color'])!=0:
         hairstyles = sorted(scores['hair'],key=lambda x:x[1], reverse=True)[:3]
@@ -129,7 +131,12 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
 
     return result_docs
 
-def hairstyle_recommendation(model, image_base64, keywords=None,season=None):
+def hairstyle_recommendation(model, image_base64, keywords=None,season=None, status_callback=None):
+
+    # 상태 전송
+    if status_callback:
+        status_callback("추천 헤어스타일 검색 중...")
+
     if image_base64.startswith('data:image'):
         image_data = base64.b64decode(image_base64.split(',')[1])
     else:
@@ -143,7 +150,7 @@ def hairstyle_recommendation(model, image_base64, keywords=None,season=None):
     with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
         img.save(temp_file.name)
         temp_path = temp_file.name
-    
+
     try:
         result = stone.process(temp_path, image_type='color',return_report_image=False,tone_palette='perla')
         skin_tone = skin_tone_choice(result)
@@ -234,7 +241,12 @@ def hairstyle_recommendation(model, image_base64, keywords=None,season=None):
 #     result = generate_hairstyle(model, face_img, shape_img, color_img)
 #     return result
 
-def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, client=None):
+def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, client=None, status_callback=None):
+
+    # 상태 전송
+    if status_callback:
+        status_callback("이미지 생성 중...")
+
     if image_base64.startswith('data:image'):
         image_data = base64.b64decode(image_base64.split(',')[1])
     else:

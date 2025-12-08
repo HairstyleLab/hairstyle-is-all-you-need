@@ -1,6 +1,7 @@
 import os
 import sys
 import torch
+import base64
 import statistics
 import tensorflow as tf
 import numpy as np
@@ -252,3 +253,14 @@ def smart_resize(image):
       image = np.array(Image.fromarray(image).resize((dim1, dim2), Image.LANCZOS, ))
 
   return image
+def encode_image_from_file(file_path):
+    with open(file_path, "rb") as image_file:
+        image_content = image_file.read()
+        file_ext = os.path.splitext(file_path)[1].lower()
+        if file_ext in [".jpg", ".jpeg"]:
+            mime_type = "image/jpeg"
+        elif file_ext == ".png":
+            mime_type = "image/png"
+        else:
+            mime_type = "image/unknown"
+        return f"data:{mime_type};base64,{base64.b64encode(image_content).decode('utf-8')}"
