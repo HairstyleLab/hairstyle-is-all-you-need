@@ -1,17 +1,22 @@
 import os
+import sys
 import json
 import base64
 import tempfile
 import stone
-import base64
-import json
+from PIL import Image
+import numpy as np
+from io import BytesIO
 from math import inf
 from langchain_classic.agents import load_tools
 from langchain_tavily import TavilySearch
 # from model.utils import generate_hairstyle
-from model.utils import get_face_shape_and_gender, classify_personal_color,get_faceshape,get_weight
+from model.utils import get_face_shape_and_gender, classify_personal_color,get_faceshape, get_weight, face_crop, get_3d
 from model.model_load import load_embedding_model, load_reranker_model
 from rag.retrieval import load_retriever
+from model.utility.superresolution import get_high_resolution
+from model.utility.white_balance import grayworld_white_balance
+from model.utility.face_swap import face_swap
 
 def skin_tone_choice(result):
     dominant_result = tuple(int(result['faces'][0]['dominant_colors'][0]['color'].lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
@@ -22,9 +27,8 @@ def skin_tone_choice(result):
         return dominant_result
     else:
         return nondominant_result
-    
+ 
 def non_image_recommendation(face_shape=None, gender=None, personal_color=None, season=None, hairstyle_keywords=None, haircolor_keywords=None, status_callback=None):
-
     # 상태 전송
     if status_callback:
         status_callback("추천 헤어스타일 검색 중...")
@@ -118,6 +122,13 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
                 color_result = vectorstore.similarity_search_with_relevance_scores(query=haircolor_keywords, k=1, fetch_k=1000, filter={'details':haircolor})
                 result_docs[haircolor] = [doc.page_content for doc,_ in color_result]
 
+    with open("result_docs.txt", "w", encoding="utf-8") as f:
+        for key, docs in result_docs.items():
+            f.write(f"=== {key} ===\n")
+            for doc in docs:
+                f.write(doc + "\n")
+            f.write("\n")
+
     return result_docs
 
 def hairstyle_recommendation(model, image_base64, keywords=None,season=None, status_callback=None):
@@ -131,8 +142,13 @@ def hairstyle_recommendation(model, image_base64, keywords=None,season=None, sta
     else:
         image_data = base64.b64decode(image_base64)
 
+    img = Image.open(BytesIO(image_data))
+    img_array = np.array(img)
+    balanced_array = grayworld_white_balance(img_array)
+    img = Image.fromarray(balanced_array)
+
     with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
-        temp_file.write(image_data)
+        img.save(temp_file.name)
         temp_path = temp_file.name
 
     try:
@@ -240,51 +256,70 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, client=No
         temp_file.write(image_data)
         temp_path = temp_file.name
 
-    with open('config/reference.json', 'r', encoding='utf-8') as f:
-        reference = json.load(f)
-        
+    try:
+        face = face_crop(image_file=temp_path)
+        face_upscale = get_high_resolution(face)
 
-    image = None
-    hairstyle_path = None
-    haircolor_path = None
-    hairstyle_dict = reference.get("헤어스타일", {})
+        face_upscale_img = Image.fromarray(face_upscale)
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as temp_upscale:
+            face_upscale_img.save(temp_upscale.name)
+            processed_path = temp_upscale.name
 
-    if hairstyle:
-        for gender in hairstyle_dict.values():
-            for category in gender.values():
-                if hairstyle in category:
-                    hairstyle_path = category[hairstyle]
+        with open('config/reference.json', 'r', encoding='utf-8') as f:
+            reference = json.load(f)
+
+        image = None
+        hairstyle_path = None
+        haircolor_path = None
+        hairstyle_dict = reference.get("헤어스타일", {})
+
+        if hairstyle:
+            for gender in hairstyle_dict.values():
+                for category in gender.values():
+                    if hairstyle in category:
+                        hairstyle_path = category[hairstyle]
+                        break
+                if hairstyle_path:
                     break
-            if hairstyle_path:
-                break
-    if haircolor:
-        color_dict = reference.get("컬러", {})
-        haircolor_path = color_dict.get(haircolor, None)
+        if haircolor:
+            color_dict = reference.get("컬러", {})
+            haircolor_path = color_dict.get(haircolor, None)
 
-    if hairstyle_path and haircolor_path:
-        prompt = """첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 바꾸고 세번째 이미지의 사람 헤어컬러를 적용해줘.
-                    이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어스타일과 헤어컬러만 바뀌어야 해."""
-        image = generate_image(client, prompt, image_path=temp_path, shape_path=hairstyle_path, color_path=haircolor_path)
-    elif hairstyle_path and haircolor_path is None:
-        prompt = """첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 적용해주고 헤어컬러는 기존 그대로 유지해줘.
-                    이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어스타일만 바뀌어야 해."""
-        image = generate_image(client, prompt, image_path=temp_path, shape_path=hairstyle_path)
-    elif haircolor_path and hairstyle_path is None:
-        prompt = """첫번째 이미지의 사람 헤어컬러만 두번째 이미지의 사람 컬러로 바꿔줘.
-                    이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어컬러만 바뀌어야 해."""
-        image = generate_image(client, prompt, image_path=temp_path, color_path=haircolor_path)
+        if hairstyle_path and haircolor_path:
+            prompt = """첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 바꾸고 세번째 이미지의 사람 헤어컬러를 적용해줘.
+                        이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어스타일과 헤어컬러만 바뀌어야 해."""
+            image = generate_image(client, prompt, image_path=processed_path, shape_path=hairstyle_path, color_path=haircolor_path)
+        elif hairstyle_path and haircolor_path is None:
+            prompt = """첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 적용해주고 헤어컬러는 기존 그대로 유지해줘.
+                        이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어스타일만 바뀌어야 해."""
+            image = generate_image(client, prompt, image_path=processed_path, shape_path=hairstyle_path)
+        elif haircolor_path and hairstyle_path is None:
+            prompt = """첫번째 이미지의 사람 헤어컬러만 두번째 이미지의 사람 컬러로 바꿔줘.
+                        이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어컬러만 바뀌어야 해."""
+            image = generate_image(client, prompt, image_path=processed_path, color_path=haircolor_path)
 
-    folder_path = "./results"
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_gen:
+            temp_gen.write(image)
+            temp_gen_path = temp_gen.name
 
-    # results 폴더가 없으면 생성
-    os.makedirs(folder_path, exist_ok=True)
+        swapped_face = face_swap(processed_path, temp_gen_path)
 
-    path = len([file for file in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, file))])
-    with open(f"results/{path}.jpg", "wb") as f:
-        f.write(image)
+        folder_path = "./results"
+        path = len([file for file in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, file))])
+        with open(f"results/{path}.jpg", "wb") as f:
+            f.write(swapped_face)
 
-    ## 수정부분 -> image 추가
-    return ("이미지 생성 완료. 이제 답변을 생성하세요", image)
+        get_3d(image_file=f"{path}.jpg", input_dir=folder_path)
+
+        return ("이미지 생성 완료. 이제 답변을 생성하세요", image)
+
+    finally:
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
+        if 'processed_path' in locals() and os.path.exists(processed_path):
+            os.unlink(processed_path)
+        if 'temp_gen_path' in locals() and os.path.exists(temp_gen_path):
+            os.unlink(temp_gen_path)
 
 def safe_open(path):
     if path and os.path.exists(path):
