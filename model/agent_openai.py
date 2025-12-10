@@ -182,6 +182,8 @@ prompt = ChatPromptTemplate.from_messages(
             여자 컷: 레이어드컷,리프컷,머쉬룸컷,뱅헤어,보브컷,샤기컷,원랭스컷,픽시컷,허쉬컷,히메컷
             여자 펌: CS컬펌,C컬펌,S컬펌,글램펌,내츄럴펌,디지털펌,러블리펌,레이어드펌,루즈펌,리프펌,물결펌,믹스펌,바디펌,발롱펌,볼드펌,볼륨매직,볼륨펌,빌드펌,셋팅펌,스파이럴펌,에어펌,젤리펌,지젤펌,쿠션펌,텍스처펌,퍼피베이비펌,허쉬펌,히피펌
 
+
+
             <헤어컬러>
             골드브라운,다크브라운,레드브라운,레드와인,로즈골드,마르살라,마호가니,밀크브라운,베이지브라운,블루블랙,애쉬그레이,애쉬바이올렛,애쉬베이지,애쉬브라운,애쉬블론드,애쉬블루,애쉬카키,애쉬퍼플,오렌지브라운,올리브브라운,초코브라운,카키브라운,쿠퍼브라운,핑크브라운
             """,
@@ -235,7 +237,7 @@ class HairstyleAgent:
           
 
         @tool
-        def hairstyle_generation_tool(hairstyle=None, haircolor=None):
+        def hairstyle_generation_tool(hairstyle=None, haircolor=None, hairlength=None):
             """
             사용자의 요청에 따라 업로드된 이미지에 합성된 헤어스타일 또는 헤어컬러 이미지를 생성합니다.
             사용자가 제공한 기본 이미지 위에 원하는 헤어스타일과 헤어컬러를 합성합니다.
@@ -244,7 +246,8 @@ class HairstyleAgent:
                 return "오류: 이미지가 제공되지 않았습니다."
             print(f"[INFO] Tool 실행: Base64 길이 = {len(self.current_image_base64)}")
 
-            if res := hairstyle_generation(self.current_image_base64, hairstyle, haircolor, self.client, status_callback=self.status_callback):
+            if res := hairstyle_generation(self.current_image_base64, hairstyle, haircolor, hairlength, self.client, status_callback=self.status_callback):
+
                 self.gen_flag = True
             self.current_image_base64 = base64.b64encode(res[1]).decode('utf-8')
 
