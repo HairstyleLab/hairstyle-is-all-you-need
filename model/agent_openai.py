@@ -220,7 +220,7 @@ class HairstyleAgent:
                 return "오류: 이미지가 제공되지 않았습니다."
             print(f"[INFO] Tool 실행: Base64 길이 = {len(self.current_image_base64)}")
 
-            if res := hairstyle_generation(self.current_image_base64, hairstyle, haircolor, self.client):
+            if res := hairstyle_generation(self.current_image_base64, hairstyle, haircolor, hairlength, self.client):
                 self.gen_flag = True
             self.current_image_base64 = base64.b64encode(res[1]).decode('utf-8')
             
