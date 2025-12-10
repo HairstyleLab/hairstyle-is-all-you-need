@@ -12,11 +12,14 @@ from langchain_classic.agents import load_tools
 from langchain_tavily import TavilySearch
 # from model.utils import generate_hairstyle
 from model.utils import get_face_shape_and_gender, classify_personal_color,get_faceshape, get_weight, face_crop, get_3d
-from model.model_load import load_embedding_model, load_reranker_model
+from model.model_load import load_embedding_model
 from rag.retrieval import load_retriever
 from model.utility.superresolution import get_high_resolution
 from model.utility.white_balance import grayworld_white_balance
 from model.utility.face_swap import face_swap
+
+embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cuda")    
+retriever, vectorstore = load_retriever("rag/db/styles_added_hf", embeddings)
 
 def skin_tone_choice(result):
     dominant_result = tuple(int(result['faces'][0]['dominant_colors'][0]['color'].lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
@@ -44,9 +47,6 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
 
     with open("config/hairstyle_length.json", "r", encoding="utf-8") as f:
         hairstyle_length = json.load(f)
-
-    embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cuda")    
-    _, vectorstore = load_retriever("rag/db/styles_added_hf", embeddings)
 
     # 성별& 얼굴형 있으면
     if gender is not None and face_shape is not None :
@@ -309,10 +309,6 @@ def hairstyle_recommendation(model, image_base64, season=None, hairstyle_keyword
     finally:
         os.unlink(temp_path)
 
-# def hairstyle_generation(model, face_img, shape_img, color_img):
-#     result = generate_hairstyle(model, face_img, shape_img, color_img)
-#     return result
-
 def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, client=None, status_callback=None):
 
     # 상태 전송
@@ -434,9 +430,6 @@ def web_search(query: str)->str:
     return final_result
 
 def rag_search(face_shape: str|None=None, season: str|None=None, tone: str|None=None):
-    embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cpu")
-    retriever, _ = load_retriever("rag/db/styles_added_hf", embeddings=embeddings, k=10)
-
     res = []
     if face_shape:
         res += retriever.invoke(face_shape, filter={'category': 'face'}, k=3)
