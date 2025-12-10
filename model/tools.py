@@ -306,13 +306,11 @@ def hairstyle_recommendation(model, image_base64, season=None, hairstyle_keyword
     finally:
         os.unlink(temp_path)
 
-def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, client=None, status_callback=None):
 
-    # 상태 전송
+def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, hairlength=None, client=None, status_callback=None):
     if status_callback:
         status_callback("이미지 생성 중...")
 
-def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, hairlength=None, client=None):
     if image_base64.startswith('data:image'):
         image_data = base64.b64decode(image_base64.split(',')[1])
     else:
@@ -334,9 +332,13 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, hairlengt
         with open('config/reference.json', 'r', encoding='utf-8') as f:
             reference = json.load(f)
 
+        with open('config/hairstyle_length.json', 'r', encoding='utf-8') as f:
+            length_config = json.load(f)
+
         image = None
-        hairstyle_path = None
+        hairstyle_img_path = None
         haircolor_path = None
+        result_text = ""
         hairstyle_dict = reference.get("헤어스타일", {})
 
 
@@ -394,23 +396,24 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, hairlengt
                     # 지원 기장 정보가 없는 경우 기본 경로 사용
                     hairstyle_img_path = f"{base_path}/{hairstyle}.jpg"
 
-            if haircolor:
-                color_dict = reference.get("컬러", {})
-                haircolor_path = color_dict.get(haircolor, None)
+        if haircolor:
+            color_dict = reference.get("컬러", {})
+            haircolor_path = color_dict.get(haircolor, None)
 
-            if hairstyle_path and haircolor_path:
-                prompt = """첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 바꾸고 세번째 이미지의 사람 헤어컬러를 적용해줘.
-                            이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어스타일과 헤어컬러만 바뀌어야 해."""
-                image = generate_image(client, prompt, image_path=processed_path, shape_path=hairstyle_path, color_path=haircolor_path)
-            elif hairstyle_path and haircolor_path is None:
-                prompt = """첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 적용해주고 헤어컬러는 기존 그대로 유지해줘.
-                            이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어스타일만 바뀌어야 해."""
-                image = generate_image(client, prompt, image_path=processed_path, shape_path=hairstyle_path)
-            elif haircolor_path and hairstyle_path is None:
-                prompt = """첫번째 이미지의 사람 헤어컬러만 두번째 이미지의 사람 컬러로 바꿔줘.
-                            이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어컬러만 바뀌어야 해."""
-                image = generate_image(client, prompt, image_path=processed_path, color_path=haircolor_path)
+        if hairstyle_img_path and haircolor_path:
+            prompt = """첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 바꾸고 세번째 이미지의 사람 헤어컬러를 적용해줘.
+                        이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어스타일과 헤어컬러만 바뀌어야 해."""
+            image = generate_image(client, prompt, image_path=processed_path, shape_path=hairstyle_img_path, color_path=haircolor_path)
+        elif hairstyle_img_path and haircolor_path is None:
+            prompt = """첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 적용해주고 헤어컬러는 기존 그대로 유지해줘.
+                        이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어스타일만 바뀌어야 해."""
+            image = generate_image(client, prompt, image_path=processed_path, shape_path=hairstyle_img_path)
+        elif haircolor_path and hairstyle_img_path is None:
+            prompt = """첫번째 이미지의 사람 헤어컬러만 두번째 이미지의 사람 컬러로 바꿔줘.
+                        이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어컬러만 바뀌어야 해."""
+            image = generate_image(client, prompt, image_path=processed_path, color_path=haircolor_path)
 
+        if image:
             with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_gen:
                 temp_gen.write(image)
                 temp_gen_path = temp_gen.name
@@ -424,7 +427,7 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, hairlengt
 
             get_3d(image_file=f"{path}.jpg", input_dir=folder_path)
 
-          return (result_text if result_text else "이미지 생성 완료. 이제 답변을 생성하세요", image)
+        return (result_text if result_text else "이미지 생성 완료. 이제 답변을 생성하세요", image)
 
     finally:
         if os.path.exists(temp_path):
