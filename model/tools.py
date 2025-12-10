@@ -18,7 +18,8 @@ from model.utility.superresolution import get_high_resolution
 from model.utility.white_balance import grayworld_white_balance
 from model.utility.face_swap import face_swap
 
-embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cuda")    
+# embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cuda")
+embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cpu")    
 retriever, vectorstore = load_retriever("rag/db/styles_added_hf", embeddings)
 
 def skin_tone_choice(result):
@@ -460,6 +461,21 @@ def generate_image(client, prompt, image_path, shape_path=None, color_path=None)
 
     return image_bytes
 
+# def web_search(query: str)->str:
+#     TAVILY_API_KEY=os.getenv("TAVILY_API_KEY")
+#     tool = TavilySearch(
+#         max_results=10,
+#         topic = 'general',
+#         tavily_api_key=TAVILY_API_KEY,
+#         include_answer=True,
+#         search_depth='basic',
+#     )
+#     results = tool.invoke(query)
+#     final_result = results['answer']
+#     for content in results['results']:
+#         final_result += f" {content['content']}"
+#     return final_result
+
   def search_compatible_length(length, hairstyle_path):
 
     if length in hairstyle_path.keys():
@@ -490,32 +506,7 @@ def search_close_length_category_from_list(supported_lengths, length):
     closest_length, _ = min(length_list, key=lambda x: abs(x[1] - requested_idx))
 
     return ", ".join(supported_lengths), closest_length
-  
-def web_search(query: str)->str:
-    TAVILY_API_KEY=os.getenv("TAVILY_API_KEY")
-    tool = TavilySearch(
-        max_results=10,
-        topic = 'general',
-        tavily_api_key=TAVILY_API_KEY,
-        include_answer=True,
-        search_depth='basic',
-    )
-    results = tool.invoke(query)
-    final_result = results['answer']
-    for content in results['results']:
-        final_result += f" {content['content']}"
-    return final_result
-
-def rag_search(face_shape: str|None=None, season: str|None=None, tone: str|None=None):
-    res = []
-    if face_shape:
-        res += retriever.invoke(face_shape, filter={'category': 'face'}, k=3)
-    if season:
-        res += retriever.invoke(season, filter={'category': 'season'}, k=3)
-    if tone:
-        res += retriever.invoke(tone, filter={'category': 'skintone'}, k=3)
-    
-    return res
+ 
 
 def get_tool_list(*args):
     tools = load_tools(['dalle-image-generator'])
