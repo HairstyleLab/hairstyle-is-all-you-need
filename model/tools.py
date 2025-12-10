@@ -18,6 +18,7 @@ from model.utility.superresolution import get_high_resolution
 from model.utility.white_balance import grayworld_white_balance
 from model.utility.face_swap import face_swap
 
+
 def skin_tone_choice(result):
     dominant_result = tuple(int(result['faces'][0]['dominant_colors'][0]['color'].lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
     nondominant_result = tuple(int(result['faces'][0]['dominant_colors'][1]['color'].lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
@@ -30,6 +31,8 @@ def skin_tone_choice(result):
       
 
 def non_image_recommendation(face_shape=None, gender=None, personal_color=None, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None, status_callback=None):
+    
+    
     if status_callback:
         status_callback("추천 헤어스타일 검색 중...")
 
@@ -165,6 +168,8 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
 
 
 def hairstyle_recommendation(model, image_base64, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None, status_callback=None):
+    
+    
     if status_callback:
         status_callback("추천 헤어스타일 검색 중...")
 
