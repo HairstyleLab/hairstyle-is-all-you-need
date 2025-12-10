@@ -312,6 +312,7 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, client=No
     if status_callback:
         status_callback("이미지 생성 중...")
 
+def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, hairlength=None, client=None):
     if image_base64.startswith('data:image'):
         image_data = base64.b64decode(image_base64.split(',')[1])
     else:
@@ -338,45 +339,92 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, client=No
         haircolor_path = None
         hairstyle_dict = reference.get("헤어스타일", {})
 
+
         if hairstyle:
-            for gender in hairstyle_dict.values():
-                for category in gender.values():
-                    if hairstyle in category:
-                        hairstyle_path = category[hairstyle]
+            base_path = None
+            gender_key = None
+            category_key = None
+
+            for gender in hairstyle_dict.keys():
+                for category in hairstyle_dict[gender].keys():
+                    if hairstyle in hairstyle_dict[gender][category]:
+                        base_path = hairstyle_dict[gender][category][hairstyle]
+                        gender_key = gender
+                        category_key = category
                         break
-                if hairstyle_path:
+                if base_path:
                     break
-        if haircolor:
-            color_dict = reference.get("컬러", {})
-            haircolor_path = color_dict.get(haircolor, None)
 
-        if hairstyle_path and haircolor_path:
-            prompt = """첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 바꾸고 세번째 이미지의 사람 헤어컬러를 적용해줘.
-                        이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어스타일과 헤어컬러만 바뀌어야 해."""
-            image = generate_image(client, prompt, image_path=processed_path, shape_path=hairstyle_path, color_path=haircolor_path)
-        elif hairstyle_path and haircolor_path is None:
-            prompt = """첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 적용해주고 헤어컬러는 기존 그대로 유지해줘.
-                        이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어스타일만 바뀌어야 해."""
-            image = generate_image(client, prompt, image_path=processed_path, shape_path=hairstyle_path)
-        elif haircolor_path and hairstyle_path is None:
-            prompt = """첫번째 이미지의 사람 헤어컬러만 두번째 이미지의 사람 컬러로 바꿔줘.
-                        이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어컬러만 바뀌어야 해."""
-            image = generate_image(client, prompt, image_path=processed_path, color_path=haircolor_path)
+            if base_path:
+                # hairstyle_length.json에서 지원 기장 리스트 가져오기
+                gender_en = "Male" if gender_key == "남자" else "Female"
+                supported_lengths = None
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_gen:
-            temp_gen.write(image)
-            temp_gen_path = temp_gen.name
+                if gender_en in length_config.get("헤어스타일", {}):
+                    if category_key in length_config["헤어스타일"][gender_en]:
+                        supported_lengths = length_config["헤어스타일"][gender_en][category_key].get(hairstyle, [])
 
-        swapped_face = face_swap(processed_path, temp_gen_path)
+                if supported_lengths:
+                    # 기장 호환성 확인
+                    if hairlength is None or hairlength in supported_lengths:
+                        # 대표 기장이거나 지원하는 기장인 경우
+                        if hairlength is None:
+                            # 지원 기장 개수에 따라 선택
+                            length_count = len(supported_lengths)
+                            if length_count == 1:
+                                selected_length = supported_lengths[0]
+                            elif length_count == 2:
+                                selected_length = supported_lengths[1]  # 마지막
+                            elif length_count == 3:
+                                selected_length = supported_lengths[1]  # 가운데 두 번째
+                            else:  # 4개 이상
+                                selected_length = supported_lengths[2]  # 세 번째
+                            hairstyle_img_path = f"{base_path}/{selected_length}/{hairstyle}.jpg"
 
-        folder_path = "./results"
-        path = len([file for file in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, file))])
-        with open(f"results/{path}.jpg", "wb") as f:
-            f.write(swapped_face)
+                            result_text = ""
+                        else:
+                            hairstyle_img_path = f"{base_path}/{hairlength}/{hairstyle}.jpg"
+                            result_text = f"요청하신 기장은 {hairlength} 기장에 해당합니다. {hairstyle}의 {hairlength} 기장으로 합성한 이미지가 생성되었습니다."
+                    else:
+                        # 가장 가까운 기장 찾기
+                        current_list, closest_length = search_close_length_category_from_list(supported_lengths, hairlength)
+                        hairstyle_img_path = f"{base_path}/{closest_length}/{hairstyle}.jpg"
+                        result_text = f"현재 {hairstyle}이 지원하는 기장은 {current_list} 입니다. 사용자의 요청과 가까운 {closest_length} 기장의 {hairstyle}을 생성했습니다."
+                else:
+                    # 지원 기장 정보가 없는 경우 기본 경로 사용
+                    hairstyle_img_path = f"{base_path}/{hairstyle}.jpg"
 
-        get_3d(image_file=f"{path}.jpg", input_dir=folder_path)
+            if haircolor:
+                color_dict = reference.get("컬러", {})
+                haircolor_path = color_dict.get(haircolor, None)
 
-        return ("이미지 생성 완료. 이제 답변을 생성하세요", swapped_face)
+            if hairstyle_path and haircolor_path:
+                prompt = """첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 바꾸고 세번째 이미지의 사람 헤어컬러를 적용해줘.
+                            이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어스타일과 헤어컬러만 바뀌어야 해."""
+                image = generate_image(client, prompt, image_path=processed_path, shape_path=hairstyle_path, color_path=haircolor_path)
+            elif hairstyle_path and haircolor_path is None:
+                prompt = """첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 적용해주고 헤어컬러는 기존 그대로 유지해줘.
+                            이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어스타일만 바뀌어야 해."""
+                image = generate_image(client, prompt, image_path=processed_path, shape_path=hairstyle_path)
+            elif haircolor_path and hairstyle_path is None:
+                prompt = """첫번째 이미지의 사람 헤어컬러만 두번째 이미지의 사람 컬러로 바꿔줘.
+                            이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어컬러만 바뀌어야 해."""
+                image = generate_image(client, prompt, image_path=processed_path, color_path=haircolor_path)
+
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_gen:
+                temp_gen.write(image)
+                temp_gen_path = temp_gen.name
+
+            swapped_face = face_swap(processed_path, temp_gen_path)
+
+            folder_path = "./results"
+            path = len([file for file in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, file))])
+            with open(f"results/{path}.jpg", "wb") as f:
+                f.write(swapped_face)
+
+            get_3d(image_file=f"{path}.jpg", input_dir=folder_path)
+
+          return (result_text if result_text else "이미지 생성 완료. 이제 답변을 생성하세요", image)
 
     finally:
         if os.path.exists(temp_path):
@@ -385,6 +433,7 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, client=No
             os.unlink(processed_path)
         if 'temp_gen_path' in locals() and os.path.exists(temp_gen_path):
             os.unlink(temp_gen_path)
+
 
 def safe_open(path):
     if path and os.path.exists(path):
@@ -411,6 +460,37 @@ def generate_image(client, prompt, image_path, shape_path=None, color_path=None)
 
     return image_bytes
 
+  def search_compatible_length(length, hairstyle_path):
+
+    if length in hairstyle_path.keys():
+        return True
+    else:
+        return False
+
+def search_close_length_category(hairstyle_path, length):
+
+    length_dict = {'숏': 0, '단발': 1, '중단발': 2, '미디엄': 3, '장발': 4}
+    idx = length_dict.get(length)
+    current_length_list = [(k, length_dict.get(k)) for k in hairstyle_path.keys()]  # [숏, 중단발]
+    closest_length, _ = min(current_length_list, key=lambda x: abs(x[1] - idx))
+
+    return f",".join(hairstyle_path.keys()), closest_length
+
+def search_close_length_category_from_list(supported_lengths, length):
+    """
+    지원하는 기장 리스트에서 요청한 기장과 가장 가까운 기장을 찾는 함수
+    """
+    length_dict = {'숏': 0, '단발': 1, '중단발': 2, '미디엄': 3, '장발': 4}
+    requested_idx = length_dict.get(length, 0)
+
+    # 지원하는 기장들을 (기장명, 인덱스) 튜플 리스트로 변환
+    length_list = [(l, length_dict.get(l, 0)) for l in supported_lengths]
+
+    # 요청한 기장과의 차이가 가장 작은 기장 찾기
+    closest_length, _ = min(length_list, key=lambda x: abs(x[1] - requested_idx))
+
+    return ", ".join(supported_lengths), closest_length
+  
 def web_search(query: str)->str:
     TAVILY_API_KEY=os.getenv("TAVILY_API_KEY")
     tool = TavilySearch(
