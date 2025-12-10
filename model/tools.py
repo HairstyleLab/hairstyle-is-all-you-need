@@ -213,10 +213,7 @@ def hairstyle_recommendation(model, image_base64, season=None, hairstyle_keyword
         faceshape_hairstyle_list = hairstyle_data['얼굴형'][gender+face_shape]
         haircolor_list = hairstyle_data['퍼스널컬러'][personal_color]
         hair_max_score, hair_min_score = -inf, inf
-        color_max_score, color_min_score = -inf, inf
-        
-        embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cuda")
-        _, vectorstore = load_retriever("rag/db/styles_added_hf", embeddings=embeddings)        
+        color_max_score, color_min_score = -inf, inf     
         
         if season is not None:
             seasonal_hairstyle_list = hairstyle_data['계절'][gender+season]
