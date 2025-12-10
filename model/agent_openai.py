@@ -212,7 +212,7 @@ class HairstyleAgent:
     
     def _build_agent(self):
         """내부 agent 생성"""
-        llm = load_openai(model_name="gpt-4o", temperature=0)
+        llm = load_openai(model_name="gpt-5-mini", temperature=0)
         
         # Tool 정의 - self.current_image_base64 사용
         @tool
@@ -246,12 +246,17 @@ class HairstyleAgent:
                 return "오류: 이미지가 제공되지 않았습니다."
             print(f"[INFO] Tool 실행: Base64 길이 = {len(self.current_image_base64)}")
 
-            if res := hairstyle_generation(self.current_image_base64, hairstyle, haircolor, hairlength, self.client, status_callback=self.status_callback):
+            res = hairstyle_generation(self.current_image_base64, hairstyle, haircolor, hairlength, self.client, status_callback=self.status_callback)
 
+            # 튜플 반환: (result_text, image_bytes) - 정상 생성
+            # 문자열 반환: 오류 메시지 (예: 다수 얼굴 감지)
+            if isinstance(res, tuple):
                 self.gen_flag = True
-            self.current_image_base64 = base64.b64encode(res[1]).decode('utf-8')
-
-            return res[0]
+                self.current_image_base64 = base64.b64encode(res[1]).decode('utf-8')
+                return res[0]
+            else:
+                # 문자열 오류 메시지 반환
+                return res
 
         @tool
         def web_search_tool(query: str) -> str:

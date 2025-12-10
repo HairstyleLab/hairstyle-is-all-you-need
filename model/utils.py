@@ -190,6 +190,9 @@ def face_crop(image_file, crop_size=256):
     detected_bboxs = faceCropper.faceDetector(image, True)
     numberDetectedFaces = len(detected_bboxs)
 
+    print(f"[DEBUG] face_crop: 감지된 얼굴 수 = {numberDetectedFaces}")
+    print(f"[DEBUG] detected_bboxs = {detected_bboxs}")
+
     if numberDetectedFaces == 1:
         face_crop_course, face_bbox_course, lmk68 = faceCropper.detect_face_simple(image)
         face_crop_refine, face_bbox_refine = faceCropper.refineCrop(face_crop_course, face_bbox_course)
@@ -208,6 +211,9 @@ def face_crop(image_file, crop_size=256):
 
         # Re-crop from original image with extended vertical bounds
         face_crop_refine = np.array(image)[new_start_y:new_end_y, face_bbox_refine[2]:face_bbox_refine[3]]
+
+    else:
+        return None
 
     face_crop_refine = pad_to_square(face_crop_refine)
     face_tensor = np.array(face_crop_refine).astype(np.float32) / 255.0
