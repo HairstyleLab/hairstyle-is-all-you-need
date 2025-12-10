@@ -1,5 +1,6 @@
 import os
 import torch
+from sentence_transformers import SentenceTransformer
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from transformers import BitsAndBytesConfig
@@ -20,6 +21,7 @@ def load_embedding_model(model_name, device='cpu'):
     if 'text-embedding-3' in model_name:
         embedding_model = OpenAIEmbeddings(model_name=model_name)
     else:
+        # model = SentenceTransformer(model_name)
         embedding_model = HuggingFaceEmbeddings(model_name=model_name, model_kwargs={'device': device}, encode_kwargs={'normalize_embeddings':True})
 
     return embedding_model

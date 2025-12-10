@@ -45,13 +45,12 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
     with open("config/hairstyle_length.json", "r", encoding="utf-8") as f:
         hairstyle_length = json.load(f)
 
-    all_hairstyle_length = hairstyle_length['헤어스타일'][gender]
-
-    embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cpu")    
-    _, vectorstore = load_retriever("rag/db/all_merge_hf", embeddings)
+    embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cuda")    
+    _, vectorstore = load_retriever("rag/db/styles_added_hf", embeddings)
 
     # 성별& 얼굴형 있으면
     if gender is not None and face_shape is not None :
+        all_hairstyle_length = hairstyle_length['헤어스타일'][gender]
         faceshape_hairstyle_list = hairstyle_data['얼굴형'][gender+face_shape]
         faceshape_hairlength_list = hairstyle_data['얼굴형별 추천 기장'][gender+face_shape]
         # 얼굴형 특징 데이터 먼저 서치해서 문서에 담기
@@ -92,18 +91,18 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
 
         # 키워드 없으면 키워드 gender와 얼굴형으로 해서 RAG에서 doc 서치해서 반환
         else:
-            keywords = f'{gender} {face_shape}'
+            hairstyle_keywords = f'{gender} {face_shape}'
             if hairlength_keywords:
                 for hairstyle in faceshape_hairstyle_list:
                     for key, val in all_hairstyle_length.items():
                         for sub_key, sub_val in val.items():
                             if sub_key == hairstyle:
                                 if hairlength_keywords in sub_val:
-                                    hair_result = vectorstore.similarity_search_with_relevance_scores(query=keywords, k=1, fetch_k=1000, filter={'details':hairstyle,'gender':gender})
+                                    hair_result = vectorstore.similarity_search_with_relevance_scores(query=hairstyle_keywords, k=1, fetch_k=1000, filter={'details':hairstyle,'gender':gender})
                                     result_docs[hairstyle] = [doc.page_content for doc,_ in hair_result]
             else:
                 for hairstyle in faceshape_hairstyle_list:
-                    hair_result = vectorstore.similarity_search_with_relevance_scores(query=keywords, k=1, fetch_k=1000, filter={'details':hairstyle,'gender':gender})
+                    hair_result = vectorstore.similarity_search_with_relevance_scores(query=hairstyle_keywords, k=1, fetch_k=1000, filter={'details':hairstyle,'gender':gender})
                     result_docs[hairstyle] = [doc.page_content for doc,_ in hair_result]
 
     if personal_color is not None :
@@ -124,8 +123,9 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
             # weight.append(get_weight(color_max_score,color_min_score))
             weight['color'] = get_weight(color_max_score,color_min_score)
         else:
+            haircolor_keywords = personal_color
             for haircolor in haircolor_list:
-                color_result = vectorstore.similarity_search_with_relevance_scores(query=personal_color, k=2, fetch_k=1000, filter={'details':haircolor})
+                color_result = vectorstore.similarity_search_with_relevance_scores(query=haircolor_keywords, k=2, fetch_k=1000, filter={'details':haircolor})
                 result_docs[haircolor] = [doc.page_content for doc,_ in color_result]
     
 
@@ -141,12 +141,14 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
         hairstyles = sorted(scores['hair'],key=lambda x:x[1], reverse=True)[:3]
         haircolors = sorted(scores['color'],key=lambda x:x[1], reverse=True)[:3]
         if len(hairstyles)!=0:
+            hair_query = hairstyle_keywords if hairstyle_keywords is not None else f'{gender} {face_shape}' if (gender and face_shape) else '헤어스타일'
             for hairstyle, _ in hairstyles:
-                hair_result = vectorstore.similarity_search_with_relevance_scores(query=hairstyle_keywords, k=1, fetch_k=1000, filter={'details':hairstyle,'gender':gender})
+                hair_result = vectorstore.similarity_search_with_relevance_scores(query=hair_query, k=1, fetch_k=1000, filter={'details':hairstyle,'gender':gender})
                 result_docs[hairstyle] = [doc.page_content for doc,_ in hair_result]
         if len(haircolors)!=0:
+            color_query = haircolor_keywords if haircolor_keywords is not None else personal_color if personal_color else '헤어컬러'
             for haircolor, _ in haircolors:
-                color_result = vectorstore.similarity_search_with_relevance_scores(query=haircolor_keywords, k=1, fetch_k=1000, filter={'details':haircolor})
+                color_result = vectorstore.similarity_search_with_relevance_scores(query=color_query, k=1, fetch_k=1000, filter={'details':haircolor})
                 result_docs[haircolor] = [doc.page_content for doc,_ in color_result]
 
     save_path = "rag_result_docs.txt"
@@ -213,14 +215,14 @@ def hairstyle_recommendation(model, image_base64, season=None, hairstyle_keyword
         hair_max_score, hair_min_score = -inf, inf
         color_max_score, color_min_score = -inf, inf
         
-        embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cpu")
-        _, vectorstore = load_retriever("rag/db/all_merge_hf", embeddings=embeddings)        
+        embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cuda")
+        _, vectorstore = load_retriever("rag/db/styles_added_hf", embeddings=embeddings)        
         
         if season is not None:
             seasonal_hairstyle_list = hairstyle_data['계절'][gender+season]
         
         if hairstyle_keywords is None:
-            keywords = f"{face_shape}, {'여자' if gender == 'Female' else '남자'}"
+            hairstyle_keywords = f"{face_shape}, {'여자' if gender == 'Female' else '남자'}"
 
         for hairstyle in all_hairstyle_list:
             hairstyle_results = vectorstore.similarity_search_with_relevance_scores(query=hairstyle_keywords,k=1000,fetch_k=1000,filter={'gender':gender,'details':hairstyle})
@@ -238,7 +240,7 @@ def hairstyle_recommendation(model, image_base64, season=None, hairstyle_keyword
                 continue
 
         if haircolor_keywords is None:
-            keywords = f"{personal_color}"
+            haircolor_keywords = f"{personal_color}"
 
         for haircolor in all_haircolor_list:
             haircolor_results = vectorstore.similarity_search_with_relevance_scores(query=haircolor_keywords,k=1000,fetch_k=1000,filter={"details":haircolor})
@@ -276,7 +278,7 @@ def hairstyle_recommendation(model, image_base64, season=None, hairstyle_keyword
 
         faceshape_docs = {}
         korean_faceshape = get_faceshape(face_shape)
-        faceshape_result = vectorstore.similarity_search_with_score(query=keywords,k=2,fetch_k=1000,filter={'details':korean_faceshape,'gender':gender})
+        faceshape_result = vectorstore.similarity_search_with_score(query=hairstyle_keywords,k=2,fetch_k=1000,filter={'details':korean_faceshape,'gender':gender})
         faceshape_docs[korean_faceshape] = [doc.page_content for doc,_ in faceshape_result]
         summary = f"이 사람의 얼굴형은 {face_shape}, 성별은 {gender}이고 퍼스널컬러는 {personal_color}입니다."
 
@@ -381,7 +383,7 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, client=No
 
         get_3d(image_file=f"{path}.jpg", input_dir=folder_path)
 
-        return ("이미지 생성 완료. 이제 답변을 생성하세요", image)
+        return ("이미지 생성 완료. 이제 답변을 생성하세요", swapped_face)
 
     finally:
         if os.path.exists(temp_path):
@@ -433,7 +435,7 @@ def web_search(query: str)->str:
 
 def rag_search(face_shape: str|None=None, season: str|None=None, tone: str|None=None):
     embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cpu")
-    retriever, _ = load_retriever("rag/db/all_merge_hf", embeddings=embeddings, k=10)
+    retriever, _ = load_retriever("rag/db/styles_added_hf", embeddings=embeddings, k=10)
 
     res = []
     if face_shape:
