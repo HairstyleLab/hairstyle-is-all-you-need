@@ -1,17 +1,25 @@
 import os
+import sys
 import json
 import base64
 import tempfile
 import stone
-import base64
-import json
+from PIL import Image
+import numpy as np
+from io import BytesIO
 from math import inf
 from langchain_classic.agents import load_tools
 from langchain_tavily import TavilySearch
 # from model.utils import generate_hairstyle
-from model.utils import get_face_shape_and_gender, classify_personal_color,get_faceshape,get_weight
-from model.model_load import load_embedding_model, load_reranker_model
+from model.utils import get_face_shape_and_gender, classify_personal_color,get_faceshape, get_weight, face_crop, get_3d
+from model.model_load import load_embedding_model
 from rag.retrieval import load_retriever
+from model.utility.superresolution import get_high_resolution
+from model.utility.white_balance import grayworld_white_balance
+from model.utility.face_swap import face_swap
+
+embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cuda")    
+retriever, vectorstore = load_retriever("rag/db/styles_added_hf", embeddings)
 
 def skin_tone_choice(result):
     dominant_result = tuple(int(result['faces'][0]['dominant_colors'][0]['color'].lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
@@ -22,33 +30,46 @@ def skin_tone_choice(result):
         return dominant_result
     else:
         return nondominant_result
-    
-def non_image_recommendation(face_shape=None, gender=None, personal_color=None, season=None, hairstyle_keywords=None, haircolor_keywords=None):
-    
+      
+
+def non_image_recommendation(face_shape=None, gender=None, personal_color=None, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None, status_callback=None):
+    if status_callback:
+        status_callback("추천 헤어스타일 검색 중...")
+
     scores = {'hair':[],'color':[]}
     results = {'hair':{},'color':{}}
     result_docs = {}
-    weight = []
+    weight = {'hair': 0,'color': 0}
     hair_max_score, hair_min_score = -inf, inf
     color_max_score, color_min_score = -inf, inf
-
     with open("config/hairstyle_list.json", "r", encoding="utf-8") as f:
         hairstyle_data = json.load(f)
 
-    embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cpu")    
-    _, vectorstore = load_retriever("rag/db/all_merge_hf", embeddings)
+    with open("config/hairstyle_length.json", "r", encoding="utf-8") as f:
+        hairstyle_length = json.load(f)
 
     # 성별& 얼굴형 있으면
     if gender is not None and face_shape is not None :
+        all_hairstyle_length = hairstyle_length['헤어스타일'][gender]
         faceshape_hairstyle_list = hairstyle_data['얼굴형'][gender+face_shape]
+        faceshape_hairlength_list = hairstyle_data['얼굴형별 추천 기장'][gender+face_shape]
         # 얼굴형 특징 데이터 먼저 서치해서 문서에 담기
         korean_faceshape = get_faceshape(face_shape)
         faceshape_result = vectorstore.similarity_search_with_score(query=korean_faceshape,k=2,fetch_k=1000,filter={'details':korean_faceshape,'gender':gender})
         result_docs[korean_faceshape] = [doc.page_content for doc,_ in faceshape_result]
-
         # 키워드가 있으면 원래 로직대로 수행 ( keywords 검색해서 가중치 반영해서 계산해 정렬 )
         if hairstyle_keywords is not None:
-            all_hairstyle_list = hairstyle_data['전체 헤어스타일'][gender]
+            all_hairstyle_list = []
+
+            if hairlength_keywords:
+                for key, val in all_hairstyle_length.items():
+                    for sub_key, sub_val in val.items():
+                        if hairlength_keywords in sub_val:
+                            all_hairstyle_list.append(sub_key)
+            else:
+                for key, val in all_hairstyle_length.items():
+                    for sub_key, sub_val in val.items():
+                        all_hairstyle_list.append(sub_key)
 
             for hairstyle in all_hairstyle_list:
                 hairstyle_results = vectorstore.similarity_search_with_relevance_scores(query=hairstyle_keywords,k=1000,fetch_k=1000,filter={'gender':gender,'details':hairstyle})
@@ -65,69 +86,102 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
                     hair_min_score = min(avg_score,hair_min_score)
                 except:
                     continue
-            weight.append(get_weight(hair_max_score,hair_min_score))
+            # weight.append(get_weight(hair_max_score,hair_min_score))
+            weight['hair'] = get_weight(hair_max_score,hair_min_score)
 
         # 키워드 없으면 키워드 gender와 얼굴형으로 해서 RAG에서 doc 서치해서 반환
         else:
-            for hairstyle in faceshape_hairstyle_list:
-                keywords = f'{gender} {face_shape}'
-                hair_result = vectorstore.similarity_search_with_relevance_scores(query=keywords, k=1, fetch_k=1000, filter={'details':hairstyle,'gender':gender})
-                result_docs[hairstyle] = [doc.page_content for doc,_ in hair_result]
-            
+            hairstyle_keywords = f'{gender} {face_shape}'
+            if hairlength_keywords:
+                for hairstyle in faceshape_hairstyle_list:
+                    for key, val in all_hairstyle_length.items():
+                        for sub_key, sub_val in val.items():
+                            if sub_key == hairstyle:
+                                if hairlength_keywords in sub_val:
+                                    hair_result = vectorstore.similarity_search_with_relevance_scores(query=hairstyle_keywords, k=1, fetch_k=1000, filter={'details':hairstyle,'gender':gender})
+                                    result_docs[hairstyle] = [doc.page_content for doc,_ in hair_result]
+            else:
+                for hairstyle in faceshape_hairstyle_list:
+                    hair_result = vectorstore.similarity_search_with_relevance_scores(query=hairstyle_keywords, k=1, fetch_k=1000, filter={'details':hairstyle,'gender':gender})
+                    result_docs[hairstyle] = [doc.page_content for doc,_ in hair_result]
+
     if personal_color is not None :
         haircolor_list = hairstyle_data['퍼스널컬러'][personal_color]
 
         if haircolor_keywords is not None:    # 느낌에 관련된 키워드가 있으면 
             all_haircolor_list = hairstyle_data['전체 헤어스타일']['컬러']
-
             for haircolor in all_haircolor_list:
                 haircolor_results = vectorstore.similarity_search_with_relevance_scores(query=haircolor_keywords,k=1000,fetch_k=1000,filter={"details":haircolor})
                 try:
                     color_avg_score = sum(score for _, score in haircolor_results) / len(haircolor_results)
                     pc_score = 1 if haircolor in haircolor_list else 0
                     results['color'][haircolor] = [color_avg_score,pc_score]
-                    color_max_score = max(avg_score,color_max_score)
-                    color_min_score = min(avg_score,color_min_score)
+                    color_max_score = max(color_avg_score,color_max_score)
+                    color_min_score = min(color_avg_score,color_min_score)
                 except:
                     continue
-            weight.append(get_weight(color_max_score,color_min_score))
+            # weight.append(get_weight(color_max_score,color_min_score))
+            weight['color'] = get_weight(color_max_score,color_min_score)
         else:
+            haircolor_keywords = personal_color
             for haircolor in haircolor_list:
-                color_result = vectorstore.similarity_search_with_relevance_scores(query=personal_color, k=2, fetch_k=1000, filter={'details':haircolor})
+                color_result = vectorstore.similarity_search_with_relevance_scores(query=haircolor_keywords, k=2, fetch_k=1000, filter={'details':haircolor})
                 result_docs[haircolor] = [doc.page_content for doc,_ in color_result]
+    
 
     # 가중치로 계산하기
     for idx, (category, value_dict) in enumerate(results.items()):
         for hairstyle, score_list in value_dict.items():
             if category == "color":
-                scores[category].append([hairstyle, score_list[0] + weight[idx] * score_list[1] ])
+                scores[category].append([hairstyle, score_list[0] + weight[category] * score_list[1] ])
             else:
-                scores[category].append([hairstyle, score_list[0] + weight[idx] * score_list[1] + weight[idx] * score_list[2]])
+                scores[category].append([hairstyle, score_list[0] + weight[category] * score_list[1] + weight[category] * score_list[2]])
     
     if len(results['hair'])!=0 or len(results['color'])!=0:
         hairstyles = sorted(scores['hair'],key=lambda x:x[1], reverse=True)[:3]
         haircolors = sorted(scores['color'],key=lambda x:x[1], reverse=True)[:3]
         if len(hairstyles)!=0:
+            hair_query = hairstyle_keywords if hairstyle_keywords is not None else f'{gender} {face_shape}' if (gender and face_shape) else '헤어스타일'
             for hairstyle, _ in hairstyles:
-                hair_result = vectorstore.similarity_search_with_relevance_scores(query=hairstyle_keywords, k=1, fetch_k=1000, filter={'details':hairstyle,'gender':gender})
+                hair_result = vectorstore.similarity_search_with_relevance_scores(query=hair_query, k=1, fetch_k=1000, filter={'details':hairstyle,'gender':gender})
                 result_docs[hairstyle] = [doc.page_content for doc,_ in hair_result]
         if len(haircolors)!=0:
+            color_query = haircolor_keywords if haircolor_keywords is not None else personal_color if personal_color else '헤어컬러'
             for haircolor, _ in haircolors:
-                color_result = vectorstore.similarity_search_with_relevance_scores(query=haircolor_keywords, k=1, fetch_k=1000, filter={'details':haircolor})
+                color_result = vectorstore.similarity_search_with_relevance_scores(query=color_query, k=1, fetch_k=1000, filter={'details':haircolor})
                 result_docs[haircolor] = [doc.page_content for doc,_ in color_result]
+
+    save_path = "rag_result_docs.txt"
+    with open(save_path, "w", encoding="utf-8") as f:
+        for key, docs in result_docs.items():
+            f.write(f"### {key}\n")
+            for idx, content in enumerate(docs, 1):
+                f.write(f"[{idx}] {content}\n")
+            f.write("\n")  # 구분 줄
+
+    print(f"[INFO] result_docs saved to: {save_path}")
 
     return result_docs
 
-def hairstyle_recommendation(model, image_base64, keywords=None,season=None):
+
+def hairstyle_recommendation(model, image_base64, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None, status_callback=None):
+    if status_callback:
+        status_callback("추천 헤어스타일 검색 중...")
+
     if image_base64.startswith('data:image'):
         image_data = base64.b64decode(image_base64.split(',')[1])
     else:
         image_data = base64.b64decode(image_base64)
-    
+
+    img = Image.open(BytesIO(image_data))
+    img_array = np.array(img)
+    balanced_array = grayworld_white_balance(img_array)
+    img = Image.fromarray(balanced_array)
+
     with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
-        temp_file.write(image_data)
+        img.save(temp_file.name)
         temp_path = temp_file.name
-    
+
     try:
         result = stone.process(temp_path, image_type='color',return_report_image=False,tone_palette='perla')
         skin_tone = skin_tone_choice(result)
@@ -137,26 +191,38 @@ def hairstyle_recommendation(model, image_base64, keywords=None,season=None):
         with open("config/hairstyle_list.json", "r", encoding="utf-8") as f:
             hairstyle_data = json.load(f)
 
+        with open("config/hairstyle_length.json", "r", encoding="utf-8") as f:
+            hairstyle_length = json.load(f)
+
         scores = {'hair':[],'color':[]}
         results = {'hair':{},'color':{}}
-        all_hairstyle_list = hairstyle_data['전체 헤어스타일'][gender]
+        all_hairstyle_list = []
+        all_hairstyle_length = hairstyle_length['헤어스타일'][gender]
+
+        if hairlength_keywords:
+            for key, val in all_hairstyle_length.items():
+                for sub_key, sub_val in val.items():
+                    if hairlength_keywords in sub_val:
+                        all_hairstyle_list.append(sub_key)
+        else:
+            for key, val in all_hairstyle_length.items():
+                for sub_key, sub_val in val.items():
+                    all_hairstyle_list.append(sub_key)
+
         all_haircolor_list = hairstyle_data['전체 헤어스타일']['컬러']
         faceshape_hairstyle_list = hairstyle_data['얼굴형'][gender+face_shape]
         haircolor_list = hairstyle_data['퍼스널컬러'][personal_color]
         hair_max_score, hair_min_score = -inf, inf
-        color_max_score, color_min_score = -inf, inf
-        
-        embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cpu")
-        _, vectorstore = load_retriever("rag/db/all_merge_hf", embeddings=embeddings)        
+        color_max_score, color_min_score = -inf, inf     
         
         if season is not None:
             seasonal_hairstyle_list = hairstyle_data['계절'][gender+season]
         
-        if keywords is None:
-            keywords = f"{face_shape}, {personal_color}, {'여자' if gender == 'Female' else '남자'}"
+        if hairstyle_keywords is None:
+            hairstyle_keywords = f"{face_shape}, {'여자' if gender == 'Female' else '남자'}"
 
         for hairstyle in all_hairstyle_list:
-            hairstyle_results = vectorstore.similarity_search_with_relevance_scores(query=keywords,k=1000,fetch_k=1000,filter={'gender':gender,'details':hairstyle})
+            hairstyle_results = vectorstore.similarity_search_with_relevance_scores(query=hairstyle_keywords,k=1000,fetch_k=1000,filter={'gender':gender,'details':hairstyle})
             try:
                 avg_score = sum(score for _, score in hairstyle_results) / len(hairstyle_results)
                 face_score = 1 if hairstyle in faceshape_hairstyle_list else 0 
@@ -169,9 +235,12 @@ def hairstyle_recommendation(model, image_base64, keywords=None,season=None):
                 hair_min_score = min(avg_score,hair_min_score)
             except:
                 continue
-        
+
+        if haircolor_keywords is None:
+            haircolor_keywords = f"{personal_color}"
+
         for haircolor in all_haircolor_list:
-            haircolor_results = vectorstore.similarity_search_with_relevance_scores(query=keywords,k=1000,fetch_k=1000,filter={"details":haircolor})
+            haircolor_results = vectorstore.similarity_search_with_relevance_scores(query=haircolor_keywords,k=1000,fetch_k=1000,filter={"details":haircolor})
             try:
                 color_avg_score = sum(score for _, score in haircolor_results) / len(haircolor_results)
                 pc_score = 1 if haircolor in haircolor_list else 0
@@ -196,27 +265,52 @@ def hairstyle_recommendation(model, image_base64, keywords=None,season=None):
 
         hairstyle_docs = {}
         for hairstyle, _ in hairstyles:
-            hair_result = vectorstore.similarity_search_with_relevance_scores(query=keywords, k=1, fetch_k=1000, filter={'details':hairstyle,'gender':gender})
+            hair_result = vectorstore.similarity_search_with_relevance_scores(query=hairstyle_keywords, k=1, fetch_k=1000, filter={'details':hairstyle,'gender':gender})
             hairstyle_docs[hairstyle] = [doc.page_content for doc,_ in hair_result]
 
         haircolor_docs = {}
         for haircolor, _ in haircolors:
-            color_result = vectorstore.similarity_search_with_relevance_scores(query=keywords, k=1, fetch_k=1000, filter={'details':haircolor})
+            color_result = vectorstore.similarity_search_with_relevance_scores(query=haircolor_keywords, k=1, fetch_k=1000, filter={'details':haircolor})
             haircolor_docs[haircolor] = [doc.page_content for doc,_ in color_result]
 
         faceshape_docs = {}
         korean_faceshape = get_faceshape(face_shape)
-        faceshape_result = vectorstore.similarity_search_with_score(query=keywords,k=2,fetch_k=1000,filter={'details':korean_faceshape,'gender':gender})
+        faceshape_result = vectorstore.similarity_search_with_score(query=hairstyle_keywords,k=2,fetch_k=1000,filter={'details':korean_faceshape,'gender':gender})
         faceshape_docs[korean_faceshape] = [doc.page_content for doc,_ in faceshape_result]
-        
-        return faceshape_docs, personal_color, hairstyle_docs, haircolor_docs
+        summary = f"이 사람의 얼굴형은 {face_shape}, 성별은 {gender}이고 퍼스널컬러는 {personal_color}입니다."
+
+        output_dir = "recommendation_logs"
+        os.makedirs(output_dir, exist_ok=True)
+
+        def save_docs_to_txt(filename, docs_dict):
+            path = os.path.join(output_dir, filename)
+            with open(path, "w", encoding="utf-8") as f:
+                for key, docs in docs_dict.items():
+                    f.write(f"=== {key} ===\n")
+                    for doc in docs:
+                        f.write(doc)
+                        f.write("\n\n")
+            return path
+
+        faceshape_path = save_docs_to_txt("faceshape_docs.txt", faceshape_docs)
+        hairstyle_path = save_docs_to_txt("hairstyle_docs.txt", hairstyle_docs)
+        haircolor_path = save_docs_to_txt("haircolor_docs.txt", haircolor_docs)
+
+        print("Documents saved:")
+        print(f"- {faceshape_path}")
+        print(f"- {hairstyle_path}")
+        print(f"- {haircolor_path}")
+
+        return summary, faceshape_docs, personal_color, hairstyle_docs, haircolor_docs
         
     finally:
         os.unlink(temp_path)
 
-# def hairstyle_generation(model, face_img, shape_img, color_img):
-#     result = generate_hairstyle(model, face_img, shape_img, color_img)
-#     return result
+def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, client=None, status_callback=None):
+
+    # 상태 전송
+    if status_callback:
+        status_callback("이미지 생성 중...")
 
 def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, hairlength=None, client=None):
     if image_base64.startswith('data:image'):
@@ -228,99 +322,145 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, hairlengt
         temp_file.write(image_data)
         temp_path = temp_file.name
 
-    with open('config/reference.json', 'r', encoding='utf-8') as f:
-        reference = json.load(f)
+    try:
+        face = face_crop(image_file=temp_path)
+        face_upscale = get_high_resolution(face)
 
-    with open('config/hairstyle_length.json', 'r', encoding='utf-8') as f:
-        length_config = json.load(f)
+        face_upscale_img = Image.fromarray(face_upscale)
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as temp_upscale:
+            face_upscale_img.save(temp_upscale.name)
+            processed_path = temp_upscale.name
 
-    image = None
-    result_text = ""
-    hairstyle_img_path = None
-    haircolor_path = None
-    hairstyle_dict = reference.get("헤어스타일", {})
+        with open('config/reference.json', 'r', encoding='utf-8') as f:
+            reference = json.load(f)
 
-    if hairstyle:
-        # reference.json에서 헤어스타일 기본 경로 찾기
-        base_path = None
-        gender_key = None
-        category_key = None
+        image = None
+        hairstyle_path = None
+        haircolor_path = None
+        hairstyle_dict = reference.get("헤어스타일", {})
 
-        for gender in hairstyle_dict.keys():
-            for category in hairstyle_dict[gender].keys():
-                if hairstyle in hairstyle_dict[gender][category]:
-                    base_path = hairstyle_dict[gender][category][hairstyle]
-                    gender_key = gender
-                    category_key = category
+
+        if hairstyle:
+            base_path = None
+            gender_key = None
+            category_key = None
+
+            for gender in hairstyle_dict.keys():
+                for category in hairstyle_dict[gender].keys():
+                    if hairstyle in hairstyle_dict[gender][category]:
+                        base_path = hairstyle_dict[gender][category][hairstyle]
+                        gender_key = gender
+                        category_key = category
+                        break
+                if base_path:
                     break
+
             if base_path:
-                break
+                # hairstyle_length.json에서 지원 기장 리스트 가져오기
+                gender_en = "Male" if gender_key == "남자" else "Female"
+                supported_lengths = None
 
-        if base_path:
-            # hairstyle_length.json에서 지원 기장 리스트 가져오기
-            gender_en = "Male" if gender_key == "남자" else "Female"
-            supported_lengths = None
+                if gender_en in length_config.get("헤어스타일", {}):
+                    if category_key in length_config["헤어스타일"][gender_en]:
+                        supported_lengths = length_config["헤어스타일"][gender_en][category_key].get(hairstyle, [])
 
-            if gender_en in length_config.get("헤어스타일", {}):
-                if category_key in length_config["헤어스타일"][gender_en]:
-                    supported_lengths = length_config["헤어스타일"][gender_en][category_key].get(hairstyle, [])
+                if supported_lengths:
+                    # 기장 호환성 확인
+                    if hairlength is None or hairlength in supported_lengths:
+                        # 대표 기장이거나 지원하는 기장인 경우
+                        if hairlength is None:
+                            # 지원 기장 개수에 따라 선택
+                            length_count = len(supported_lengths)
+                            if length_count == 1:
+                                selected_length = supported_lengths[0]
+                            elif length_count == 2:
+                                selected_length = supported_lengths[1]  # 마지막
+                            elif length_count == 3:
+                                selected_length = supported_lengths[1]  # 가운데 두 번째
+                            else:  # 4개 이상
+                                selected_length = supported_lengths[2]  # 세 번째
+                            hairstyle_img_path = f"{base_path}/{selected_length}/{hairstyle}.jpg"
 
-            if supported_lengths:
-                # 기장 호환성 확인
-                if hairlength is None or hairlength in supported_lengths:
-                    # 대표 기장이거나 지원하는 기장인 경우
-                    if hairlength is None:
-                        # 지원 기장 개수에 따라 선택
-                        length_count = len(supported_lengths)
-                        if length_count == 1:
-                            selected_length = supported_lengths[0]
-                        elif length_count == 2:
-                            selected_length = supported_lengths[1]  # 마지막
-                        elif length_count == 3:
-                            selected_length = supported_lengths[1]  # 가운데 두 번째
-                        else:  # 4개 이상
-                            selected_length = supported_lengths[2]  # 세 번째
-                        hairstyle_img_path = f"{base_path}/{selected_length}/{hairstyle}.jpg"
-
-                        result_text = ""
+                            result_text = ""
+                        else:
+                            hairstyle_img_path = f"{base_path}/{hairlength}/{hairstyle}.jpg"
+                            result_text = f"요청하신 기장은 {hairlength} 기장에 해당합니다. {hairstyle}의 {hairlength} 기장으로 합성한 이미지가 생성되었습니다."
                     else:
-                        hairstyle_img_path = f"{base_path}/{hairlength}/{hairstyle}.jpg"
-                        result_text = f"요청하신 기장은 {hairlength} 기장에 해당합니다. {hairstyle}의 {hairlength} 기장으로 합성한 이미지가 생성되었습니다."
+                        # 가장 가까운 기장 찾기
+                        current_list, closest_length = search_close_length_category_from_list(supported_lengths, hairlength)
+                        hairstyle_img_path = f"{base_path}/{closest_length}/{hairstyle}.jpg"
+                        result_text = f"현재 {hairstyle}이 지원하는 기장은 {current_list} 입니다. 사용자의 요청과 가까운 {closest_length} 기장의 {hairstyle}을 생성했습니다."
                 else:
-                    # 가장 가까운 기장 찾기
-                    current_list, closest_length = search_close_length_category_from_list(supported_lengths, hairlength)
-                    hairstyle_img_path = f"{base_path}/{closest_length}/{hairstyle}.jpg"
-                    result_text = f"현재 {hairstyle}이 지원하는 기장은 {current_list} 입니다. 사용자의 요청과 가까운 {closest_length} 기장의 {hairstyle}을 생성했습니다."
-            else:
-                # 지원 기장 정보가 없는 경우 기본 경로 사용
-                hairstyle_img_path = f"{base_path}/{hairstyle}.jpg"
+                    # 지원 기장 정보가 없는 경우 기본 경로 사용
+                    hairstyle_img_path = f"{base_path}/{hairstyle}.jpg"
 
-    if haircolor:
-        color_dict = reference.get("컬러", {})
-        haircolor_path = color_dict.get(haircolor, None)
+            if haircolor:
+                color_dict = reference.get("컬러", {})
+                haircolor_path = color_dict.get(haircolor, None)
 
-    if hairstyle_img_path and haircolor_path:
-        prompt = """첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 바꾸고 세번째 이미지의 사람 헤어컬러를 적용해줘.
-                    이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어스타일과 헤어컬러만 바뀌어야 해."""
-        image = generate_image(client, prompt, image_path=temp_path, shape_path=hairstyle_img_path, color_path=haircolor_path)
-    elif hairstyle_img_path and haircolor_path is None:
-        prompt = """첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 적용해주고 헤어컬러는 기존 그대로 유지해줘.
-                    이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어스타일만 바뀌어야 해."""
-        image = generate_image(client, prompt, image_path=temp_path, shape_path=hairstyle_img_path)
-    elif haircolor_path and hairstyle_img_path is None:
-        prompt = """첫번째 이미지의 사람 헤어컬러만 두번째 이미지의 사람 컬러로 바꿔줘.
-                    이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어컬러만 바뀌어야 해."""
-        image = generate_image(client, prompt, image_path=temp_path, color_path=haircolor_path)
+            if hairstyle_path and haircolor_path:
+                prompt = """첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 바꾸고 세번째 이미지의 사람 헤어컬러를 적용해줘.
+                            이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어스타일과 헤어컬러만 바뀌어야 해."""
+                image = generate_image(client, prompt, image_path=processed_path, shape_path=hairstyle_path, color_path=haircolor_path)
+            elif hairstyle_path and haircolor_path is None:
+                prompt = """첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 적용해주고 헤어컬러는 기존 그대로 유지해줘.
+                            이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어스타일만 바뀌어야 해."""
+                image = generate_image(client, prompt, image_path=processed_path, shape_path=hairstyle_path)
+            elif haircolor_path and hairstyle_path is None:
+                prompt = """첫번째 이미지의 사람 헤어컬러만 두번째 이미지의 사람 컬러로 바꿔줘.
+                            이미지를 생성할때 첫번째 이미지의 사람 그대로 생성하되 헤어컬러만 바뀌어야 해."""
+                image = generate_image(client, prompt, image_path=processed_path, color_path=haircolor_path)
 
-    folder_path = "./results"
-    path = len([file for file in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, file))])
-    with open(f"results/{path}.jpg", "wb") as f:
-        f.write(image)
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_gen:
+                temp_gen.write(image)
+                temp_gen_path = temp_gen.name
 
-    ## 수정부분 -> image 추가, result_text 추가
-    return (result_text if result_text else "이미지 생성 완료. 이제 답변을 생성하세요", image)
+            swapped_face = face_swap(processed_path, temp_gen_path)
 
-def search_compatible_length(length, hairstyle_path):
+            folder_path = "./results"
+            path = len([file for file in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, file))])
+            with open(f"results/{path}.jpg", "wb") as f:
+                f.write(swapped_face)
+
+            get_3d(image_file=f"{path}.jpg", input_dir=folder_path)
+
+          return (result_text if result_text else "이미지 생성 완료. 이제 답변을 생성하세요", image)
+
+    finally:
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
+        if 'processed_path' in locals() and os.path.exists(processed_path):
+            os.unlink(processed_path)
+        if 'temp_gen_path' in locals() and os.path.exists(temp_gen_path):
+            os.unlink(temp_gen_path)
+
+
+def safe_open(path):
+    if path and os.path.exists(path):
+        return open(path, "rb")
+    return None
+
+def generate_image(client, prompt, image_path, shape_path=None, color_path=None):
+    image_inputs = [
+        safe_open(image_path),
+        safe_open(shape_path),
+        safe_open(color_path),
+    ]
+    image_inputs = [img for img in image_inputs if img is not None]
+
+    result = client.images.edit(
+        model="gpt-image-1",
+        image=image_inputs,
+        prompt=prompt,
+        size="1024x1024"
+    )
+
+    image_base64 = result.data[0].b64_json
+    image_bytes = base64.b64decode(image_base64)
+
+    return image_bytes
+
+  def search_compatible_length(length, hairstyle_path):
 
     if length in hairstyle_path.keys():
         return True
@@ -350,33 +490,7 @@ def search_close_length_category_from_list(supported_lengths, length):
     closest_length, _ = min(length_list, key=lambda x: abs(x[1] - requested_idx))
 
     return ", ".join(supported_lengths), closest_length
-
-def safe_open(path):
-    if path and os.path.exists(path):
-        return open(path, "rb")
-    return None
-
-def generate_image(client, prompt, image_path, shape_path=None, color_path=None):
-    image_inputs = [
-        safe_open(image_path),
-        safe_open(shape_path),
-        safe_open(color_path),
-    ]
-    image_inputs = [img for img in image_inputs if img is not None]
-
-    result = client.images.edit(
-        model="gpt-image-1",
-        image=image_inputs,
-        prompt=prompt,
-        input_fidelity="high",
-        size="1024x1024"
-    )
-
-    image_base64 = result.data[0].b64_json
-    image_bytes = base64.b64decode(image_base64)
-
-    return image_bytes
-
+  
 def web_search(query: str)->str:
     TAVILY_API_KEY=os.getenv("TAVILY_API_KEY")
     tool = TavilySearch(
@@ -393,9 +507,6 @@ def web_search(query: str)->str:
     return final_result
 
 def rag_search(face_shape: str|None=None, season: str|None=None, tone: str|None=None):
-    embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cpu")
-    retriever, _ = load_retriever("rag/db/all_merge_hf", embeddings=embeddings, k=10)
-
     res = []
     if face_shape:
         res += retriever.invoke(face_shape, filter={'category': 'face'}, k=3)
