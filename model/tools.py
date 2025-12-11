@@ -167,7 +167,7 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
     return result_docs, summary
 
 
-def hairstyle_recommendation(model, image_base64, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None, status_callback=None):
+def hairstyle_recommendation(model, image_base64, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None, status_callback=None, gender_keywords=None,faceshape_keywords=None):
     if status_callback:
         status_callback("추천 헤어스타일 검색 중...")
 
@@ -189,7 +189,15 @@ def hairstyle_recommendation(model, image_base64, season=None, hairstyle_keyword
         result = stone.process(temp_path, image_type='color',return_report_image=False,tone_palette='perla')
         skin_tone = skin_tone_choice(result)
         personal_color = classify_personal_color(skin_tone)
-        face_shape, gender = get_face_shape_and_gender(model, temp_path)
+        # 만약 gender_keywords, faceshape_keywords가 None이 아닐 경우
+        if gender_keywords is None and faceshape_keywords is None:
+            face_shape, gender = get_face_shape_and_gender(model, temp_path)
+        elif gender_keywords is not None and faceshape_keywords is None:
+            face_shape, _ = get_face_shape_and_gender(model,temp_path)
+            gender = gender_keywords
+        elif gender_keywords is None and faceshape_keywords is not None:
+            _, gender = get_face_shape_and_gender(model,temp_path)
+            face_shape = faceshape_keywords
 
         with open("config/hairstyle_list.json", "r", encoding="utf-8") as f:
             hairstyle_data = json.load(f)
