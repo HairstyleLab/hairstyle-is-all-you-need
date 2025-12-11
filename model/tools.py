@@ -19,7 +19,7 @@ from model.utility.white_balance import grayworld_white_balance
 from model.utility.face_swap import face_swap
 
 # embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cuda")
-embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cpu")    
+embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cuda")    
 retriever, vectorstore = load_retriever("rag/db/styles_added_hf", embeddings)
 
 def skin_tone_choice(result):
@@ -323,6 +323,8 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, hairlengt
 
     try:
         face = face_crop(image_file=temp_path)
+        if face is None:
+            return "ERROR <이미지에 다수의 얼굴이 감지되었습니다. 툴 호출 결과를 반환하지 않습니다. 사용자에게 안내해주세요.> ERROR"
         face_upscale = get_high_resolution(face)
 
         face_upscale_img = Image.fromarray(face_upscale)
@@ -479,7 +481,7 @@ def generate_image(client, prompt, image_path, shape_path=None, color_path=None)
 #         final_result += f" {content['content']}"
 #     return final_result
 
-  def search_compatible_length(length, hairstyle_path):
+def search_compatible_length(length, hairstyle_path):
 
     if length in hairstyle_path.keys():
         return True
