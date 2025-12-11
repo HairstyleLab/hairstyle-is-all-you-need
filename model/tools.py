@@ -162,7 +162,9 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
 
     print(f"[INFO] result_docs saved to: {save_path}")
 
-    return result_docs
+    summary = "사용자 질문에 초점을 맞춰서 반환된 문서를 참고해서 질문의 의도와 직접적으로 관련된 답변만 해봐"
+
+    return result_docs, summary
 
 
 def hairstyle_recommendation(model, image_base64, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None, status_callback=None):
