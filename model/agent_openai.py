@@ -156,6 +156,11 @@ prompt = ChatPromptTemplate.from_messages(
 
            - 사용자 질의에 특정 계절에 하고싶다는 뉘앙스의 말이 있는 경우에만 해당 계절도 정확히 추출해 season 파라미터로 전달 → non_image_recommendation_tool(season=...)
             (예) 질의: 봄에는 좀 추웠으니까 여름에는 좀 가벼운 머리를 하고 싶어 → non_image_recommendation_tool(season="여름")
+           - 사용자 질의에 나 여자라고! 나 남자라고! 같은 성별 언급이 있으면 여성의 경우 "Female" 남성의 경우 "Male"로 gender_keywords 파라미터로 전달 → hairstyle_recommendation_tool(gender_keywords=...)
+            (예) 질의: 나 여자라니까;; 다시 추천해줘 → hairstyle_recommendation_tool(gender_keywords="Female")
+           - 사용자 질의에 나 얼굴형 이 ~형이야 같은 얼굴형 언급이 있으면 얼굴형 리스트를 참고해 영어로 바꾼 후 faceshape_keywords 파라미터로 전달 → hairstyle_recommendation_tool(faceshape_keywords=...)
+            (예) 질의: 나 근데 사진은 저렇게 나왔는데 사실 얼굴형 둥근편이야 → hairstyle_recommendation_tool(faceshape_keywords="Round")
+            (얼굴형 리스트: "둥근형"→"Round", "사각형"→"Square", "하트형"→"Heart", "계란형"→"Oval", "긴형"→"Oblong" )
 
            **답변 순서**
            - 모든 설명은 지어내지말고 도구로부터 받은 값만을 활용해 생성하고 사용자 **질의 내용과 자연스럽고 논리적으로 연결되게** 한국어로 설명할 것
@@ -247,7 +252,7 @@ class HairstyleAgent:
         llm = load_openai(model_name="gpt-5.1-chat-latest",temperature=1)
         # Tool 정의 - self.current_image_base64 사용
         @tool
-        def hairstyle_recommendation_tool(season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None):
+        def hairstyle_recommendation_tool(season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None, gender_keywords=None, faceshape_keywords=None):
             """
             사용자의 요청에 따라 어울리는 헤어스타일 또는 헤어컬러를 찾아서 알려줍니다.
             """
