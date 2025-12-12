@@ -240,10 +240,14 @@ prompt = ChatPromptTemplate.from_messages(
 
 class HairstyleAgent:
 
-    def __init__(self, model, client):
+    def __init__(self, model, client, vectorstore, safmn_model=None, face_cropper=None, models_3d=None):
 
         self.model = model
         self.client = client
+        self.vectorstore = vectorstore
+        self.safmn_model = safmn_model
+        self.face_cropper = face_cropper
+        self.models_3d = models_3d
         self.last_inputs = None
         self.current_image_base64 = None  # 인스턴스별 이미지 저장
         self.gen_flag = False             # 이미지 생성했는지 여부
@@ -352,7 +356,7 @@ class HairstyleAgent:
                 self.cached_final_answer = cached
                 return "캐시에서 답변을 찾았습니다. 이 정보를 바탕으로 답변해주세요: " + cached
 
-            result = hairstyle_recommendation(self.model, self.current_image_base64, faceshape_keywords, gender_keywords, personalcolor_keywords, season, hairstyle_keywords, haircolor_keywords, hairlength_keywords, status_callback=self.status_callback)
+            result = hairstyle_recommendation(self.model, self.current_image_base64, faceshape_keywords, gender_keywords, personalcolor_keywords, season, hairstyle_keywords, haircolor_keywords, hairlength_keywords, self.vectorstore, status_callback=self.status_callback)
             # 캐시 저장은 invoke()에서 최종 답변과 함께 수행
             self.last_tool_params = {'faceshape_keywords': faceshape_keywords,'gender_keywords': gender_keywords, 'personalcolor_keywords': personalcolor_keywords,'season': season, 'hairstyle_keywords': hairstyle_keywords, 'haircolor_keywords': haircolor_keywords, 'hairlength_keywords': hairlength_keywords}
             self.last_tool_cache_hit = False
@@ -375,7 +379,7 @@ class HairstyleAgent:
                 self.cached_final_answer = cached
                 return "캐시에서 답변을 찾았습니다. 이 정보를 바탕으로 답변해주세요: " + cached
 
-            result = non_image_recommendation(face_shape, gender, personal_color, season, hairstyle_keywords, haircolor_keywords, hairlength_keywords, status_callback=self.status_callback)
+            result = non_image_recommendation(face_shape, gender, personal_color, season, hairstyle_keywords, haircolor_keywords, hairlength_keywords, self.vectorstore, status_callback=self.status_callback)
             # 캐시 저장은 invoke()에서 최종 답변과 함께 수행
             self.last_tool_params = {'season': season, 'hairstyle_keywords': hairstyle_keywords, 'haircolor_keywords': haircolor_keywords, 'hairlength_keywords': hairlength_keywords, 'gender': gender, 'face_shape': face_shape, 'personal_color': personal_color}
             self.last_tool_cache_hit = False
@@ -393,7 +397,17 @@ class HairstyleAgent:
                 return "오류: 이미지가 제공되지 않았습니다."
             print(f"[INFO] Tool 실행: Base64 길이 = {len(self.current_image_base64)}")
 
-            res = hairstyle_generation(self.current_image_base64, hairstyle, haircolor, hairlength, self.client, status_callback=self.status_callback)
+            res = hairstyle_generation(
+                self.current_image_base64,
+                hairstyle,
+                haircolor,
+                hairlength,
+                self.client,
+                status_callback=self.status_callback,
+                safmn_model=self.safmn_model,
+                face_cropper=self.face_cropper,
+                models_3d=self.models_3d
+            )
 
             # 튜플 반환: (result_text, image_bytes) - 정상 생성
             # 문자열 반환: 오류 메시지 (예: 다수 얼굴 감지)
@@ -497,14 +511,19 @@ class HairstyleAgent:
         return result
 
 
-def build_agent(model, client):
+def build_agent(model, client, vectorstore, safmn_model=None, face_cropper=None, models_3d=None):
     """
     HairstyleAgent 인스턴스를 생성하여 반환
-    
+
     Args:
         model: IdentiFace 모델
-        
+        client: OpenAI client
+        vectorstore: Vector store for RAG
+        safmn_model: Pre-loaded SAFMN super-resolution model (optional)
+        face_cropper: Pre-loaded FaceCropper instance (optional)
+        models_3d: Pre-loaded 3D reconstruction models (optional)
+
     Returns:
         HairstyleAgent 인스턴스
     """
-    return HairstyleAgent(model, client)
+    return HairstyleAgent(model, client, vectorstore, safmn_model, face_cropper, models_3d)

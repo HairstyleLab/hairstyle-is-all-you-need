@@ -144,31 +144,55 @@ def get_3d(
     auto_crop: bool = True,
     seed: int = 4,
     guidance_scale_2D: float = 3.0,
-    step_2D: int = 50
+    step_2D: int = 50,
+    models_3d: dict = None
 ) -> None:
+    """
+    Generate 3D reconstruction from image
 
-    computation_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    mvdiffusion_checkpoint_path, gslrm_checkpoint_path, gslrm_config_path = get_model_paths()
-    
-    os.makedirs(output_dir, exist_ok=True)
+    Args:
+        image_file: Path to image file
+        input_dir: Input directory
+        output_dir: Output directory
+        auto_crop: Whether to auto crop face
+        seed: Random seed
+        guidance_scale_2D: Guidance scale for 2D generation
+        step_2D: Steps for 2D generation
+        models_3d: Pre-loaded 3D models dict (if None, will load on-the-fly)
+    """
+    # If models are not provided, load them (backward compatibility)
+    if models_3d is None:
+        computation_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        mvdiffusion_checkpoint_path, gslrm_checkpoint_path, gslrm_config_path = get_model_paths()
 
-    face_detector = None
-    if auto_crop:
-        face_detector = initialize_face_detector(computation_device)
+        os.makedirs(output_dir, exist_ok=True)
 
-    diffusion_pipeline, random_generator, color_prompt_embeddings = initialize_mvdiffusion_pipeline(
-        mvdiffusion_checkpoint_path, computation_device
-    )
-    gslrm_model = initialize_gslrm_model(gslrm_checkpoint_path, gslrm_config_path, computation_device)
+        face_detector = None
+        if auto_crop:
+            face_detector = initialize_face_detector(computation_device)
 
-    camera_intrinsics_tensor, camera_extrinsics_tensor = setup_camera_parameters(computation_device)
-    
+        diffusion_pipeline, random_generator, color_prompt_embeddings = initialize_mvdiffusion_pipeline(
+            mvdiffusion_checkpoint_path, computation_device
+        )
+        gslrm_model = initialize_gslrm_model(gslrm_checkpoint_path, gslrm_config_path, computation_device)
+        camera_intrinsics_tensor, camera_extrinsics_tensor = setup_camera_parameters(computation_device)
+    else:
+        # Use pre-loaded models
+        face_detector = models_3d['face_detector']
+        diffusion_pipeline = models_3d['diffusion_pipeline']
+        random_generator = models_3d['random_generator']
+        color_prompt_embeddings = models_3d['color_prompt_embeddings']
+        gslrm_model = models_3d['gslrm_model']
+        camera_intrinsics_tensor = models_3d['camera_intrinsics_tensor']
+        camera_extrinsics_tensor = models_3d['camera_extrinsics_tensor']
+        os.makedirs(output_dir, exist_ok=True)
+
     random_generator.manual_seed(seed)
 
     process_single_image(
         image_file,
-        input_dir, 
-        output_dir, 
+        input_dir,
+        output_dir,
         auto_crop,
         diffusion_pipeline,
         random_generator,
@@ -181,8 +205,23 @@ def get_3d(
         face_detector
     )
 
-def face_crop(image_file, crop_size=256):
-    faceCropper = FaceCropper(crop_size)
+def face_crop(image_file, crop_size=256, face_cropper=None):
+    """
+    Crop and process face from image
+
+    Args:
+        image_file: Path to image file
+        crop_size: Size for face cropping
+        face_cropper: Pre-loaded FaceCropper instance (if None, will load on-the-fly)
+
+    Returns:
+        Face tensor or None if multiple/no faces detected
+    """
+    # If face_cropper is not provided, load it (backward compatibility)
+    if face_cropper is None:
+        faceCropper = FaceCropper(crop_size)
+    else:
+        faceCropper = face_cropper
 
     image = Image.open(image_file).convert("RGB")
     image = smart_resize(image)

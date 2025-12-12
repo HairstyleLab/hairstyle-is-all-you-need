@@ -141,3 +141,72 @@ class Qwen3VLChat(BaseChatModel):
 
         ai_msg = AIMessage(content=output_text)
         return ChatResult(generations=[ChatGeneration(message=ai_msg)])
+
+
+def load_safmn_model(device='cuda'):
+    """Load SAFMN super-resolution model"""
+    from model.SAFMN.basicsr.utils.download_util import load_file_from_url
+    from model.SAFMN.basicsr.archs.safmn_arch import SAFMN
+
+    model_path = 'https://github.com/sunny2109/SAFMN/releases/download/v0.1.0/SAFMN_L_Real_LSDIR_x2.pth'
+    device_obj = torch.device(device if torch.cuda.is_available() else 'cpu')
+
+    model = SAFMN(dim=128, n_blocks=16, ffn_scale=2.0, upscaling_factor=2)
+    model_path = load_file_from_url(
+        url=model_path,
+        model_dir=os.path.join('pretrained_models'),
+        progress=True,
+        file_name=None
+    )
+    model.load_state_dict(torch.load(model_path)['params'], strict=True)
+    model.eval()
+    model = model.to(device_obj)
+
+    print(f"[SAFMN 모델 로드 완료] Device: {device_obj}")
+    return model
+
+
+def load_face_cropper(crop_size=256):
+    """Load FaceCropper model"""
+    from model.utility.face_cropper import FaceCropper
+
+    face_cropper = FaceCropper(crop_size)
+    print(f"[FaceCropper 로드 완료] crop_size: {crop_size}")
+    return face_cropper
+
+
+def load_3d_models(device='cuda'):
+    """Load 3D reconstruction models (face_detector, diffusion_pipeline, gslrm_model)"""
+    import sys
+    import os
+
+    # FaceLift 경로 추가
+    facelift_dir = os.path.join(os.getcwd(), 'model/FaceLift')
+    if facelift_dir not in sys.path:
+        sys.path.insert(0, facelift_dir)
+
+    from model.FaceLift.inference import get_model_paths, initialize_face_detector, initialize_mvdiffusion_pipeline, initialize_gslrm_model, setup_camera_parameters
+
+    computation_device = torch.device(device if torch.cuda.is_available() else "cpu")
+    mvdiffusion_checkpoint_path, gslrm_checkpoint_path, gslrm_config_path = get_model_paths()
+
+    print("[3D 모델 로드 시작...]")
+    face_detector = initialize_face_detector(computation_device)
+    diffusion_pipeline, random_generator, color_prompt_embeddings = initialize_mvdiffusion_pipeline(
+        mvdiffusion_checkpoint_path, computation_device
+    )
+    gslrm_model = initialize_gslrm_model(gslrm_checkpoint_path, gslrm_config_path, computation_device)
+    camera_intrinsics_tensor, camera_extrinsics_tensor = setup_camera_parameters(computation_device)
+
+    print(f"[3D 모델 로드 완료] Device: {computation_device}")
+
+    return {
+        'face_detector': face_detector,
+        'diffusion_pipeline': diffusion_pipeline,
+        'random_generator': random_generator,
+        'color_prompt_embeddings': color_prompt_embeddings,
+        'gslrm_model': gslrm_model,
+        'camera_intrinsics_tensor': camera_intrinsics_tensor,
+        'camera_extrinsics_tensor': camera_extrinsics_tensor,
+        'device': computation_device
+    }

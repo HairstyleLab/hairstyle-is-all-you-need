@@ -38,6 +38,11 @@ def shift_a_b(lab_image, a_shift, b_shift):
 
 
 def grayworld_white_balance(image_array):
+    # Handle RGBA images by converting to RGB
+    if image_array.shape[2] == 4:
+        print("RGBA 이미지 감지 - RGB로 변환 중...")
+        # Remove alpha channel
+        image_array = image_array[:, :, :3]
 
     rgb_normalized = image_array.astype(np.float32) / 255.0
 

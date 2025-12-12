@@ -10,19 +10,32 @@ from model.SAFMN.basicsr.utils.download_util import load_file_from_url
 from model.SAFMN.basicsr.utils.colorfix import wavelet_reconstruction
 from model.SAFMN.basicsr.archs.safmn_arch import SAFMN
 
-def get_high_resolution(img):
+def get_high_resolution(img, model=None):
+    """
+    Super-resolution using SAFMN model
 
-    model_path = 'https://github.com/sunny2109/SAFMN/releases/download/v0.1.0/SAFMN_L_Real_LSDIR_x2.pth'
-    output = './results/'
-    torch.cuda.empty_cache()
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = SAFMN(dim=128, n_blocks=16, ffn_scale=2.0, upscaling_factor=2)
+    Args:
+        img: Input image tensor
+        model: Pre-loaded SAFMN model (if None, will load on-the-fly)
 
-    model_path = load_file_from_url(url=model_path, model_dir=os.path.join('pretrained_models'), progress=True, file_name=None)
-    model.load_state_dict(torch.load(model_path)['params'], strict=True)
+    Returns:
+        High-resolution image as numpy array
+    """
+    # If model is not provided, load it (backward compatibility)
+    if model is None:
+        model_path = 'https://github.com/sunny2109/SAFMN/releases/download/v0.1.0/SAFMN_L_Real_LSDIR_x2.pth'
+        torch.cuda.empty_cache()
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        model = SAFMN(dim=128, n_blocks=16, ffn_scale=2.0, upscaling_factor=2)
 
-    model.eval()
-    model = model.to(device)
+        model_path = load_file_from_url(url=model_path, model_dir=os.path.join('pretrained_models'), progress=True, file_name=None)
+        model.load_state_dict(torch.load(model_path)['params'], strict=True)
+
+        model.eval()
+        model = model.to(device)
+
+    # Get device from model
+    device = next(model.parameters()).device
     img = img.to(device)
 
     with torch.no_grad():
