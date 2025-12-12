@@ -23,7 +23,7 @@ class QACache:
         self.vectorstore = self.create_qa_vectorstore(self.json_path, self.embeddings, self.vectorstore_path)
     
     # 질문에 대한 유사도 검색
-    def get_answer(self, question):
+    def get_answer(self, question, meta=None):
     # 1. 먼저 아직 flush 안 된 store_qa에서 확인
         for qa_doc in self.store_qa:
             if qa_doc.page_content == question:
@@ -39,9 +39,14 @@ class QACache:
         similarity = 1 / (1 + distance)
         
         if similarity >= self.similarity_threshold:
-            return doc
-        else:
-            return None
+            if meta:
+                if doc.metadata.get('meta') == meta:
+                    return doc
+                else:
+                    return None
+            else:
+                return doc
+        return None
 
     #벡터스토어 생성
     def create_qa_vectorstore(self, json_path, embeddings, vectorstore_path):
@@ -66,7 +71,9 @@ class QACache:
             Document(
                 page_content=row['Qwestion'],  
                 metadata={
-                    'answer': row['Answer'] 
+                    'answer': row['Answer'],
+                    # 'meta': row['Meta'],
+                    # 'timestamp': row['Timestamp']
                 }
             )
             for row in qa_data
@@ -88,19 +95,21 @@ class QACache:
         
         return vector_store
     
-    def add_qa(self, question, answer):
+    def add_qa(self, question, answer, meta):
         
-        qa = Document(
-            page_content=question,
-            metadata={
-                'answer': answer,
-                'timestamp': datetime.now().isoformat()
-            }
-        )
-        
-        self.store_qa.append(qa)
-        if len(self.store_qa) >= self.batch_size:
-            self.flush()
+        if question:
+            qa = Document(
+                page_content=question,
+                metadata={
+                    'answer': answer,
+                    'meta': meta,
+                    'timestamp': datetime.now().isoformat()
+                }
+            )
+            
+            self.store_qa.append(qa)
+            if len(self.store_qa) >= self.batch_size:
+                self.flush()
     
     def flush(self):
         self.vectorstore.add_documents(self.store_qa)
@@ -128,30 +137,3 @@ class QACache:
     def __del__(self):
         if self.store_qa:
             self.flush()
-            
-# QA 캐시 초기화
-        self.qa_cache = self._init_qa_cache()
-        self.agent = self._build_agent()
-    
-    def _init_qa_cache(self):
-        try:
-            embeddings = OpenAIEmbeddings(model='text-embedding-3-small')
-            qa_cache = QACache(
-                json_path="rag/qa.json",
-                embeddings=embeddings,
-                vectorstore_path="rag/qa_vectorstore",
-                similarity_threshold=0.85,
-                batch_size=1
-            )
-            print("QA Cache 초기화 완료")
-            return qa_cache
-        except Exception as e:
-            print(f"QA Cache 초기화 실패: {e}")
-            return None
-    
-    
-     
-     
-
-    
-        

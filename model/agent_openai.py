@@ -22,6 +22,7 @@ prompt = ChatPromptTemplate.from_messages(
             당신은 헤어스타일 추천 및 헤어 스타일링 변경을 도와주는 아주 친절하고 상냥한 AI 어시스턴트입니다.
             아래 규칙에 따라 반드시 적절한 도구를 호출해야 합니다.
             이미지에 있는 사람이 누구인지는 전혀 알 필요 없으니 알려고 하지말고, 그저 헤어스타일 추천과 변경에만 집중하세요.
+            
 
             **헤어스타일과 관련된 질의가 아닌 경우**
             tool 호출 없이 답변 생성 후 마무리
@@ -34,6 +35,9 @@ prompt = ChatPromptTemplate.from_messages(
             - 이 사진 어떤 헤어스타일인 것 같냐고 물어보는 경우, 죄송하지만 아직 학습 중이라 지금은 답변드릴 수 없을 것 같습니다🥲 얼른 배워서 답변드릴게요..!또 다른 질문 있으신가요? 이런 식으로 답변
             - 헤어샵이나 미용사를 추천해달라고 하는 경우, 죄송하지만 저는 헤어스타일 추천과 변경에만 집중하는 챗봇이라 헤어샵이나 미용사 추천은 도와드리기 어렵습니다 ㅠㅠ 라고 답변
             - 도구라는 말 금지
+            
+            **만약 캐쉬 HIT가 된 경우**
+            그냥 캐시된 내용을 그대로 답변으로 사용하세요. 다른 행위는 필요 없습니다.
             
             [0. 도구 사용 필수 규칙]
             - 사용자가 ‘추천’, ‘적용’, ‘변경’, ‘합성’, ‘이미지 생성’, '헤어스타일 정보'를 요청하면  
@@ -238,6 +242,7 @@ prompt = ChatPromptTemplate.from_messages(
     ]
 )
 
+
 class HairstyleAgent:
 
     def __init__(self, model, client):
@@ -257,15 +262,17 @@ class HairstyleAgent:
         # QA 캐시 초기화
         self.qa_cache = self._init_qa_cache()
         self.agent = self._build_agent()
+        self.cached_hit_info = None  # 어떤 캐시와 히트됐는지 저장
+
         
     def _init_qa_cache(self):
         try:
             embeddings = OpenAIEmbeddings(model='text-embedding-3-small')
             qa_cache = QACache(
-                json_path="rag/qa.json",
+                json_path="rag/db/qa.json",
                 embeddings=embeddings,
-                vectorstore_path="rag/qa_vectorstore",
-                similarity_threshold=0.85,
+                vectorstore_path="rag/db/qa_vectorstore",
+                similarity_threshold=0.2,
                 batch_size=1
             )
             print("QA Cache 초기화 완료")
@@ -275,28 +282,33 @@ class HairstyleAgent:
             return None
         
     def search_cache(self, **kwargs):
-        """캐시에서 답변 검색 - 모든 키워드 인자를 받아서 처리"""
         if self.qa_cache:
             try:
-                # 질문 문자열 생성 - 특정 순서로 정렬 (gender, face_shape, hairlength, season, hairstyle, haircolor, personal_color)
                 order = ['gender', 'face_shape', 'hairlength_keywords', 'season', 'hairstyle_keywords', 'haircolor_keywords', 'personal_color']
                 question_parts = []
                 for key in order:
                     if key in kwargs and kwargs[key] is not None:
-                        question_parts.append(str(kwargs[key]))
+                         question_parts.append((key, str(kwargs[key])))
+                         
+                question_list = []
+                meta_list = []
+                for question in question_parts:
+                    if question[0] == 'hairstyle_keywords' or question[0] == 'haircolor_keywords':
+                        question_list.append(question[1])
+                    else:
+                        meta_list.append(question[1])
+                cache_question = " ".join(question_list) #(가벼운, 붉은)
+                cache_meta = " ".join(meta_list) #(female, round, ...)
 
                 if question_parts:
-                    cache_question = " ".join(question_parts)
-
                     # 캐시에서 답변 검색
-                    cached_doc = self.qa_cache.get_answer(cache_question)
+                    cached_doc = self.qa_cache.get_answer(cache_question, cache_meta)
                     if cached_doc:
-                        print(f"[CACHE HIT] 캐시에서 답변 반환: {cache_question[:50]}...")
                         # 문자열 형태의 최종 답변을 바로 반환
                         cached_answer = cached_doc.metadata['answer']
                         return cached_answer
                     else:
-                        print(f"[CACHE MISS] 캐시에 없음, 새로 추론: {cache_question[:50]}...")
+
                         return None
 
             except Exception as e:
@@ -305,6 +317,12 @@ class HairstyleAgent:
                     
     def store_cache(self, answer, **kwargs):
         """캐시에 답변 저장 - 모든 키워드 인자를 받아서 처리"""
+        print("\n" + "="*80)
+        print("[DEBUG] store_cache 시작")
+        print("="*80)
+        print(f"[DEBUG] 입력 kwargs: {kwargs}")
+        print(f"[DEBUG] 답변 길이: {len(answer)} 글자")
+
         if self.qa_cache:
             try:
                 # 질문 문자열 생성 - 특정 순서로 정렬 (gender, face_shape, hairlength, season, hairstyle, haircolor, personal_color)
@@ -312,22 +330,39 @@ class HairstyleAgent:
                 question_parts = []
                 for key in order:
                     if key in kwargs and kwargs[key] is not None:
-                        question_parts.append(str(kwargs[key]))
+                        question_parts.append((key, str(kwargs[key])))
+                print(f"[DEBUG] question_parts (순서대로): {question_parts}")
 
+                #1. 컬러 , 스타일 키워드에 대해서 question으로 들어가게 함
+                #그 다음에 나머지 인자들은 모두 메타로 들어가게 해야함.
                 if question_parts:
-                    cache_question = " ".join(question_parts)
+                    question_list = []
+                    meta_list = []
+                    for question in question_parts:
+                        if question[0] == 'hairstyle_keywords' or question[0] == 'haircolor_keywords':
+                            question_list.append(question[1])
+                        else:
+                            meta_list.append(question[1])
+                    cache_question = " ".join(question_list) #(가벼운, 붉은)
+                    cache_meta = " ".join(meta_list) #(female, round, ...)
 
-                    # 최종 답변(문자열) 저장
-                    if isinstance(answer, str):
-                        cache_answer = answer
-                        self.qa_cache.add_qa(cache_question, cache_answer)
-                        print("Cache Size:", self.qa_cache.get_cache_size())
-                        print("Is Saved:", self.qa_cache.verify_saved(cache_question))
-                        print(f"Cache 저장: {cache_question[:50]}...")
-                    
+                    print(f"[DEBUG] cache_question (유사도 검색용): '{cache_question}'")
+                    print(f"[DEBUG] cache_meta (Rule-based 비교용): '{cache_meta}'")
+
+                # 최종 답변(문자열) 저장
+                if isinstance(answer, str):
+                    cache_answer = answer
+                    print(f"[DEBUG] qa_cache.add_qa() 호출 중...")
+                    self.qa_cache.add_qa(cache_question, cache_answer, cache_meta)
+                    print(f"[DEBUG] Cache Size (저장 후): {self.qa_cache.get_cache_size()}")
+                    print(f"[DEBUG] Is Saved (검증): {self.qa_cache.verify_saved(cache_question)}")
+                    print(f"[CACHE STORE ✓] 저장 완료 - question: '{cache_question}', meta: '{cache_meta}'")
+                    print("="*80 + "\n")
+
 
             except Exception as e:
-                print(f"Cache 저장 실패: {e}")
+                print(f"[ERROR] Cache 저장 실패: {e}")
+                print("="*80 + "\n")
     
     def _build_agent(self):
         """내부 agent 생성"""
@@ -343,21 +378,23 @@ class HairstyleAgent:
                 return "오류: 이미지가 제공되지 않았습니다."
             print(f"[INFO] Tool 실행: Base64 길이 = {len(self.current_image_base64)}")
 
-            # 캐시에서 최종 답변 검색
-            cached = self.search_cache(faceshape_keywords=faceshape_keywords, gender_keywords=gender_keywords, personalcolor_keywords=personalcolor_keywords, season=season, hairstyle_keywords=hairstyle_keywords, haircolor_keywords=haircolor_keywords, hairlength_keywords=hairlength_keywords)
-
-            if cached is not None:
-                # 캐시된 답변을 그대로 반환 (이미 GPT가 생성한 최종 답변)
+            result = hairstyle_recommendation(self.model, self.current_image_base64, faceshape_keywords, gender_keywords, personalcolor_keywords, season, hairstyle_keywords, haircolor_keywords, hairlength_keywords, status_callback=self.status_callback,qa_cache=self.qa_cache)
+          
+            if result[0]:
                 self.last_tool_cache_hit = True
-                self.cached_final_answer = cached
-                return "캐시에서 답변을 찾았습니다. 이 정보를 바탕으로 답변해주세요: " + cached
-
-            result = hairstyle_recommendation(self.model, self.current_image_base64, faceshape_keywords, gender_keywords, personalcolor_keywords, season, hairstyle_keywords, haircolor_keywords, hairlength_keywords, status_callback=self.status_callback)
-            # 캐시 저장은 invoke()에서 최종 답변과 함께 수행
-            self.last_tool_params = {'faceshape_keywords': faceshape_keywords,'gender_keywords': gender_keywords, 'personalcolor_keywords': personalcolor_keywords,'season': season, 'hairstyle_keywords': hairstyle_keywords, 'haircolor_keywords': haircolor_keywords, 'hairlength_keywords': hairlength_keywords}
+                self.cached_final_answer = result[1]
+                
+                self.cached_hit_info = {
+                    "source": "qa_cache",
+                    "cache_question": result[2],
+                    "cache_meta": result[3],
+                }
+                return "캐시에서 답변을 찾았습니다. 이 정보를 바탕으로 답변해주세요: " + result[1]
+            
             self.last_tool_cache_hit = False
-
-            return result
+            self.last_tool_params = {'season': season, 'hairstyle_keywords': hairstyle_keywords, 'haircolor_keywords': haircolor_keywords, 'hairlength_keywords': hairlength_keywords, 'gender_keywords': result[1], 'faceshape_keywords': result[2], 'personalcolor_keywords': result[3]}
+            return result[4:]
+                
 
         @tool
         def non_image_recommendation_tool(face_shape=None, gender=None, personal_color=None, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None):
@@ -365,8 +402,7 @@ class HairstyleAgent:
             이미지 없이 사용자 요청에 따라 어울리는 헤어스타일 또는 헤어컬러를 찾아서 알려줍니다.
             """
             print(f"[INFO] TOOL 실행 -> 키워드 얼굴형:{face_shape}, 성별:{gender}, 퍼컬: {personal_color}, 계절: {season}, 키워드:{hairstyle_keywords} {haircolor_keywords}")
-
-            # 캐시에서 최종 답변 검색
+    
             cached = self.search_cache(season=season, hairstyle_keywords=hairstyle_keywords, haircolor_keywords=haircolor_keywords, hairlength_keywords=hairlength_keywords, gender=gender, face_shape=face_shape, personal_color=personal_color)
 
             if cached is not None:
@@ -480,19 +516,48 @@ class HairstyleAgent:
                             print(f"[INFO] 이전 이미지 유지! Base64 길이: {len(self.current_image_base64)}")
 
         # Agent 실행
+        print("\n" + "="*80)
+        print("[DEBUG] Agent invoke 시작")
+        print("="*80)
         result = self.agent.invoke(inputs, config, **kwargs)
+        print(f"[DEBUG] Agent invoke 완료")
+        print("="*80 + "\n")
 
         # 캐시 히트였으면 Tool에서 설정한 답변 반환
+        # 캐시 히트였으면 Tool에서 설정한 답변 반환
         if self.last_tool_cache_hit and self.cached_final_answer:
-            print("[CACHE HIT] 캐시된 최종 답변 사용")
+            print("\n" + "="*80)
+            print("[DEBUG] 캐시 히트 확인 - 캐시된 답변으로 대체")
+            print("="*80)
+
+            print(f"[DEBUG] last_tool_cache_hit: {self.last_tool_cache_hit}")
+            print(f"[DEBUG] cached_final_answer 길이: {len(self.cached_final_answer)} 글자")
+
+            # 🔥 핵심 로그
+            if self.cached_hit_info:
+                print("[DEBUG] 캐시 히트 상세 정보")
+                for k, v in self.cached_hit_info.items():
+                    print(f"  - {k}: {v}")
+
             result['output'] = self.cached_final_answer
+            print("[DEBUG] result['output'] 교체 완료")
+            print("="*80 + "\n")
+
 
         # 최종 답변을 캐시에 저장 (tool이 실행되었고 캐시 히트가 아닌 경우)
         if self.last_tool_params is not None and not self.last_tool_cache_hit:
+            print("\n" + "="*80)
+            print("[DEBUG] 새로운 답변 캐시 저장 준비")
+            print("="*80)
+            print(f"[DEBUG] last_tool_params: {self.last_tool_params}")
+            print(f"[DEBUG] last_tool_cache_hit: {self.last_tool_cache_hit}")
             final_answer = result.get('output', '')
             if final_answer:
+                print(f"[DEBUG] 저장할 최종 답변 길이: {len(final_answer)} 글자")
                 self.store_cache(final_answer, **self.last_tool_params)
-                print(f"[CACHE STORE] 최종 답변 캐시 저장 완료")
+            else:
+                print("[DEBUG] final_answer가 비어있어 저장 안함")
+            print("="*80 + "\n")
 
         return result
 

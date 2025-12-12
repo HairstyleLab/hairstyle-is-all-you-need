@@ -17,6 +17,8 @@ from rag.retrieval import load_retriever
 from model.utility.superresolution import get_high_resolution
 from model.utility.white_balance import grayworld_white_balance
 from model.utility.face_swap import face_swap
+from rag.qa_cache import QACache
+
 
 # embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cuda")
 embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cuda")    
@@ -168,8 +170,11 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
 
     return result_docs, summary
 
+################################cache####
 
-def hairstyle_recommendation(model, image_base64, faceshape_keywords=None, gender_keywords=None, personalcolor_keywords=None, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None, status_callback=None):
+#qa_cache를 인자로 보내서 캐시에서 답변 검색
+
+def hairstyle_recommendation(model, image_base64, faceshape_keywords=None, gender_keywords=None, personalcolor_keywords=None, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None, status_callback=None, qa_cache=None):
     if status_callback:
         status_callback("추천 헤어스타일 검색 중...")
 
@@ -206,8 +211,36 @@ def hairstyle_recommendation(model, image_base64, faceshape_keywords=None, gende
         else:
             face_shape = faceshape_keywords
             gender = gender_keywords
-        
+            
+        # 캐시에서 답변 검색
+        order = ['gender_keywords', 'faceshape_keywords', 'hairlength_keywords', 'season', 'hairstyle_keywords', 'haircolor_keywords', 'personalcolor_keywords']
+        kwargs = {'gender_keywords': gender_keywords, 'faceshape_keywords': faceshape_keywords, 'hairlength_keywords': hairlength_keywords, 'season': season, 'hairstyle_keywords': hairstyle_keywords, 'haircolor_keywords': haircolor_keywords, 'personalcolor_keywords': personalcolor_keywords}
+        question_parts = []
+        for key in order:
+            if key in kwargs and kwargs[key] is not None:
+                    question_parts.append((key, str(kwargs[key])))
+                    
+        question_list = []
+        meta_list = []
+        for question in question_parts:
+            if question[0] == 'hairstyle_keywords' or question[0] == 'haircolor_keywords':
+                question_list.append(question[1])
+            else:
+                meta_list.append(question[1])
+        cache_question = " ".join(question_list) #(가벼운, 붉은)
+        cache_meta = " ".join(meta_list) #(female, round, ...)
 
+        if question_parts and cache_question:
+            # 캐시에서 답변 검색
+            
+            cached_doc = qa_cache.get_answer(cache_question, cache_meta)
+            if cached_doc:
+                # 문자열 형태의 최종 답변을 바로 반환
+                cached_answer = cached_doc.metadata['answer']
+                print("cached_answer", cached_answer)
+                return (True,cached_answer,cache_question,cache_meta)
+            
+                
         with open("config/hairstyle_list.json", "r", encoding="utf-8") as f:
             hairstyle_data = json.load(f)
 
@@ -321,7 +354,7 @@ def hairstyle_recommendation(model, image_base64, faceshape_keywords=None, gende
         print(f"- {hairstyle_path}")
         print(f"- {haircolor_path}")
 
-        return summary, faceshape_docs, personal_color, hairstyle_docs, haircolor_docs
+        return False,gender,face_shape,personal_color,summary, faceshape_docs, personal_color, hairstyle_docs, haircolor_docs
         
     finally:
         os.unlink(temp_path)
