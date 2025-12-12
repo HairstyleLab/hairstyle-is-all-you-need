@@ -13,6 +13,8 @@ from langchain_core.messages import HumanMessage
 from PIL import Image
 # from model.utils import load_hairfastgan, generate_hairstyle
 from model.utils import load_identiface, get_face_shape_and_gender
+import warnings
+warnings.filterwarnings("ignore")
 
 file_path = ["images/face1.jpg"]  # 테스트용 이미지 파일 경로
 load_dotenv()
@@ -102,11 +104,23 @@ q7 = "이 얼굴에 마이쮸펌 헤어스타일에 칙칙한 초코칩 컬러�
 #     else:
 #         make_human_message(query, session_id="test_session2", file_path=None)
 
-file_list = [["images/j_1.jpg"], ["images/j_2.jpg"], ["images/j_3.jpg"], ["images/j_4.jpg"]]
-for i in range(4):
-    query = "이 얼굴에 히피펌이랑 애쉬그레이 컬러를 적용한 이미지를 생성해줄래?" # 사용자 질문 입력
-    if query.lower() in ["exit", "quit"]:
-        print("챗봇을 종료합니다.")
-        break
-    # 사용자 질문 입력
-    make_human_message(query, session_id="test_session2", file_path=file_list[i])
+# QA 캐시 테스트 (이미지 없이)
+print("=== QA 캐시 테스트 시작 ===\n")
+
+test_queries = [
+    "여름에 사각형 얼굴의 여자가 하기 좋은 산뜻한 단발 추천해줘",
+    "남자 계란 얼굴에 어울리는 시원한 헤어스타일 알려줘",
+]
+
+for i, query in enumerate(test_queries, 1):
+    print(f"\n[테스트 {i}] {query}")
+    make_human_message(query, session_id="qa_cache_test", file_path=None)
+    print("-" * 80)
+
+print("\n=== QA 캐시 테스트 완료 ===")
+
+# # 기존 이미지 생성 테스트
+# file_list = [["images/j_1.jpg"], ["images/j_2.jpg"], ["images/j_3.jpg"], ["images/j_4.jpg"]]
+# for i in range(4):
+#     query = "이 얼굴에 히피펌이랑 애쉬그레이 컬러를 적용한 이미지를 생성해줄래?"
+#     make_human_message(query, session_id="test_session2", file_path=file_list[i])
