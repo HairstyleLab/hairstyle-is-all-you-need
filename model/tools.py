@@ -34,6 +34,8 @@ def skin_tone_choice(result):
       
 
 def non_image_recommendation(face_shape=None, gender=None, personal_color=None, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None, status_callback=None):
+    
+    
     if status_callback:
         status_callback("추천 헤어스타일 검색 중...")
 
