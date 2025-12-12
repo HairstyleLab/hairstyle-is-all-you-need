@@ -12,14 +12,12 @@ from langchain_classic.agents import load_tools
 from langchain_tavily import TavilySearch
 # from model.utils import generate_hairstyle
 from model.utils import get_face_shape_and_gender, classify_personal_color,get_faceshape, get_weight, face_crop, get_3d
-from model.model_load import load_embedding_model, load_reranker_model
+from model.model_load import load_reranker_model
 from rag.retrieval import load_retriever, rerank
 from model.utility.superresolution import get_high_resolution
 from model.utility.white_balance import grayworld_white_balance
 from model.utility.face_swap import face_swap
 
-embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cuda")
-retriever, vectorstore = load_retriever("rag/db/new_hf_1211", embeddings)
 reranker = load_reranker_model("Dongjin-kr/ko-reranker", "cuda")
 
 def skin_tone_choice(result):
@@ -33,7 +31,7 @@ def skin_tone_choice(result):
         return nondominant_result
       
 
-def non_image_recommendation(face_shape=None, gender=None, personal_color=None, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None, status_callback=None):
+def non_image_recommendation(face_shape=None, gender=None, personal_color=None, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None, vectorstore=None, status_callback=None):
     
     
     if status_callback:
@@ -169,7 +167,7 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
     return result_docs, summary
 
 
-def hairstyle_recommendation(model, image_base64, faceshape_keywords=None, gender_keywords=None, personalcolor_keywords=None, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None, status_callback=None):
+def hairstyle_recommendation(model, image_base64, faceshape_keywords=None, gender_keywords=None, personalcolor_keywords=None, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None, vectorstore=None, status_callback=None):
     if status_callback:
         status_callback("추천 헤어스타일 검색 중...")
 
@@ -327,7 +325,25 @@ def hairstyle_recommendation(model, image_base64, faceshape_keywords=None, gende
         os.unlink(temp_path)
 
 
-def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, hairlength=None, client=None, status_callback=None):
+def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, hairlength=None, client=None, status_callback=None,
+                          safmn_model=None, face_cropper=None, models_3d=None):
+    """
+    Generate hairstyle image with face swap
+
+    Args:
+        image_base64: Base64 encoded input image
+        hairstyle: Target hairstyle name
+        haircolor: Target hair color name
+        hairlength: Target hair length
+        client: OpenAI client for image generation
+        status_callback: Callback for status updates
+        safmn_model: Pre-loaded SAFMN model (optional)
+        face_cropper: Pre-loaded FaceCropper instance (optional)
+        models_3d: Pre-loaded 3D models dict (optional)
+
+    Returns:
+        Tuple of (result_text, swapped_face_bytes) or error string
+    """
     if status_callback:
         status_callback("이미지 생성 중...")
 
@@ -341,10 +357,10 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, hairlengt
         temp_path = temp_file.name
 
     try:
-        face = face_crop(image_file=temp_path)
+        face = face_crop(image_file=temp_path, face_cropper=face_cropper)
         if face is None:
             return "ERROR <이미지에 다수의 얼굴이 감지되었습니다. 툴 호출 결과를 반환하지 않습니다. 사용자에게 안내해주세요.> ERROR"
-        face_upscale = get_high_resolution(face)
+        face_upscale = get_high_resolution(face, model=safmn_model)
 
         face_upscale_img = Image.fromarray(face_upscale)
         with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as temp_upscale:
@@ -447,9 +463,9 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, hairlengt
             with open(f"results/{path}.jpg", "wb") as f:
                 f.write(swapped_face)
 
-            get_3d(image_file=f"{path}.jpg", input_dir=folder_path)
+            get_3d(image_file=f"{path}.jpg", input_dir=folder_path, models_3d=models_3d)
 
-        return (result_text if result_text else "이미지 생성 완료. 이제 답변을 생성하세요", image)
+        return (result_text if result_text else "이미지 생성 완료. 이제 답변을 생성하세요", swapped_face)
 
     finally:
         if os.path.exists(temp_path):

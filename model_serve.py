@@ -16,12 +16,66 @@ from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from queue import Queue
 from threading import Thread
+from contextlib import asynccontextmanager
+from model.model_load import load_embedding_model, load_safmn_model, load_face_cropper, load_3d_models
+from rag.retrieval import load_retriever
 
 load_dotenv()
-model = load_identiface()
-client = OpenAI()
-agent = build_agent(model, client)
-app = FastAPI()
+
+# 전역 변수 선언 (lifespan에서 초기화)
+agent = None
+model = None
+client = None
+vectorstore = None
+safmn_model = None
+face_cropper = None
+models_3d = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: 모델 로딩
+    global agent, model, client, vectorstore, safmn_model, face_cropper, models_3d
+
+    print("\n" + "=" * 50)
+    print("🚀 FastAPI 서버 시작 - 모델 로딩 시작...")
+    print("=" * 50)
+
+    # 1. IdentiFace 모델 로드
+    print("\n[1/6] IdentiFace 모델 로드 중...")
+    model = load_identiface()
+
+    # 2. 임베딩 모델 및 벡터스토어 로드
+    print("\n[2/6] 임베딩 모델 및 벡터스토어 로드 중...")
+    embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cuda")
+    _, vectorstore = load_retriever("rag/db/styles_added_hf", embeddings)
+
+    # 3. SAFMN 초해상도 모델 로드
+    print("\n[3/6] SAFMN 초해상도 모델 로드 중...")
+    safmn_model = load_safmn_model(device="cuda")
+
+    # 4. FaceCropper 로드
+    print("\n[4/6] FaceCropper 로드 중...")
+    face_cropper = load_face_cropper(crop_size=256)
+
+    # 5. 3D 재구성 모델들 로드
+    print("\n[5/6] 3D 재구성 모델들 로드 중...")
+    models_3d = load_3d_models(device="cuda")
+
+    # 6. OpenAI 클라이언트 및 Agent 생성
+    print("\n[6/6] Agent 생성 중...")
+    client = OpenAI()
+    agent = build_agent(model, client, vectorstore, safmn_model, face_cropper, models_3d)
+
+    print("\n" + "=" * 50)
+    print("✅ 모든 모델 로딩 완료! 서버 준비됨")
+    print("=" * 50 + "\n")
+
+    yield  # 서버 실행
+
+    # Shutdown: 정리 작업 (필요시)
+    print("\n🛑 서버 종료 중...")
+
+app = FastAPI(lifespan=lifespan)
 
 # 전역 상태 큐 (세션별로 관리)
 status_queues = {}
