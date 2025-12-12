@@ -12,9 +12,13 @@ from langchain_classic.agents import load_tools
 from langchain_tavily import TavilySearch
 # from model.utils import generate_hairstyle
 from model.utils import get_face_shape_and_gender, classify_personal_color,get_faceshape, get_weight, face_crop, get_3d
+from model.model_load import load_reranker_model
+from rag.retrieval import load_retriever, rerank
 from model.utility.superresolution import get_high_resolution
 from model.utility.white_balance import grayworld_white_balance
 from model.utility.face_swap import face_swap
+
+reranker = load_reranker_model("Dongjin-kr/ko-reranker", "cuda")
 
 def skin_tone_choice(result):
     dominant_result = tuple(int(result['faces'][0]['dominant_colors'][0]['color'].lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
@@ -470,6 +474,128 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, hairlengt
             os.unlink(processed_path)
         if 'temp_gen_path' in locals() and os.path.exists(temp_gen_path):
             os.unlink(temp_gen_path)
+
+def hairstyle_recommendation_nano(model, query, image_base64, hairstyle_keywords=None, haircolor_keywords=None, gender_keywords=None, faceshape_keywords=None):
+    print('in recommendation tmp')
+    
+    if image_base64.startswith('data:image'):
+        image_data = base64.b64decode(image_base64.split(',')[1])
+    else:
+        image_data = base64.b64decode(image_base64)
+
+    img = Image.open(BytesIO(image_data))
+    img_array = np.array(img)
+    balanced_array = grayworld_white_balance(img_array)
+    img = Image.fromarray(balanced_array)
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
+        img.save(temp_file.name)
+        temp_path = temp_file.name
+
+    try:
+        result = stone.process(temp_path, image_type='color',return_report_image=False,tone_palette='perla')
+        skin_tone = skin_tone_choice(result)
+        personal_color = classify_personal_color(skin_tone)
+        # 만약 gender_keywords, faceshape_keywords가 None이 아닐 경우
+        if gender_keywords is None and faceshape_keywords is None:
+            face_shape, gender = get_face_shape_and_gender(model, temp_path)
+        elif gender_keywords is not None and faceshape_keywords is None:
+            face_shape, _ = get_face_shape_and_gender(model,temp_path)
+            gender = gender_keywords
+        elif gender_keywords is None and faceshape_keywords is not None:
+            _, gender = get_face_shape_and_gender(model,temp_path)
+            face_shape = faceshape_keywords
+        else:
+            face_shape = faceshape_keywords
+            gender = gender_keywords
+        
+        face_shape = get_faceshape(face_shape)
+
+        res = vectorstore.similarity_search_with_relevance_scores(query, k=500, fetch_k=500)
+
+        hairstyle_docs = []
+        haircolor_docs = []
+
+        for doc, score in res:
+            if doc.metadata['gender']==gender and doc.metadata['category']=='hairstyle' and len(hairstyle_docs) < 20:
+                hairstyle_docs.append(doc)
+                # hairstyle_docs2.append((doc, score))
+            
+            if doc.metadata['category']=='haircolor' and len(haircolor_docs)<20:
+                haircolor_docs.append(doc)
+            
+            if len(hairstyle_docs) >= 20 and len(haircolor_docs) >= 20:
+                break
+
+        reranked_hair = rerank(query, hairstyle_docs, reranker, k=3)
+        reranked_color = rerank(query, haircolor_docs, reranker, k=3)
+
+        try:
+            res_hair = vectorstore.similarity_search_with_relevance_scores(face_shape + ' ' + hairstyle_keywords, k=500, fetch_k=500)
+        except:
+            res_hair = vectorstore.similarity_search_with_relevance_scores(gender + ' ' + face_shape, k=500, fetch_k=500)
+        print(personal_color)
+        try: 
+            res_color = vectorstore.similarity_search_with_relevance_scores(personal_color + ' ' + haircolor_keywords, k=500, fetch_k=500)
+        except:
+            res_color = vectorstore.similarity_search_with_relevance_scores(personal_color, k=500, fetch_k=500)
+
+        hairstyle_docs2 = []
+        faceshape_docs = []
+        skintone_docs = []
+        target_hair = set()
+        target_color = set()
+
+        for doc, score in res_hair:
+            if doc.metadata['gender']==gender and doc.metadata['category']=='hairstyle' and len(hairstyle_docs2)<2:
+                hairstyle_docs2.append(doc)
+            
+            if doc.metadata['gender']==gender and doc.metadata['details']==face_shape and len(target_hair)<2:
+                target_hair.add(doc.metadata['id'])
+            
+            if len(hairstyle_docs)>=2 and len(target_hair)>=2:
+                break
+        
+        for doc, score in res_color:
+            if doc.metadata['details']==personal_color:
+                target_color.add(doc.metadata['id'])
+            
+            if len(target_color)>=2:
+                break
+            
+        for _, doc in vectorstore.docstore._dict.items():
+            if doc.metadata['id'] in target_hair:
+                faceshape_docs.append(doc)
+        
+            if doc.metadata['id'] in target_color:
+                skintone_docs.append(doc)
+
+        return_txt = ""
+
+        for docs in [reranked_hair, faceshape_docs, hairstyle_docs2, reranked_color, skintone_docs]:
+            for i, doc in enumerate(docs):
+                if (doc.metadata['category'] != 'face' and doc.metadata['category'] != 'skintone') or not i:
+                    return_txt += doc.metadata['details'] + '에 대한 설명입니다. '
+                return_txt += doc.page_content + '\n'
+        
+        summary = f"이 사람의 얼굴형은 {face_shape}, 성별은 {gender}이고 퍼스널컬러는 {personal_color}입니다"
+
+        # print('------------')
+        # print(target_hair)
+        # print(len(faceshape_docs))
+        # print(len(hairstyle_docs2))
+        # for doc in reranked_color:
+        #     print(doc)
+        # for doc in skintone_docs:
+        #     print(doc)
+        # for doc in hairstyle_docs2:
+        #     print(doc)
+        # print('------------')
+        return summary, return_txt
+
+    finally:
+        os.unlink(temp_path)
+
 
 
 def safe_open(path):
