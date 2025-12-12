@@ -5,7 +5,7 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_classic.agents import AgentExecutor,create_openai_tools_agent
 from model.model_load import load_openai
-from model.tools import hairstyle_recommendation, hairstyle_generation, get_tool_list, non_image_recommendation
+from model.tools import hairstyle_recommendation, hairstyle_generation, get_tool_list, non_image_recommendation, hairstyle_recommendation_nano
 from langchain_community.tools import DuckDuckGoSearchRun
 import base64
 
@@ -252,15 +252,22 @@ class HairstyleAgent:
         llm = load_openai(model_name="gpt-5.1-chat-latest",temperature=1)
         # Tool 정의 - self.current_image_base64 사용
         @tool
-        def hairstyle_recommendation_tool(season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None, gender_keywords=None, faceshape_keywords=None):
+        def hairstyle_recommendation_tool(season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None, gender_keywords=None, faceshape_keywords=None, query=None):
             """
             사용자의 요청에 따라 어울리는 헤어스타일 또는 헤어컬러를 찾아서 알려줍니다.
+            query는 사용자의 full query를 전달합니다.
             """
             if self.current_image_base64 is None:
                 return "오류: 이미지가 제공되지 않았습니다."
             print(f"[INFO] Tool 실행: Base64 길이 = {len(self.current_image_base64)}")
+            import time
 
-            return hairstyle_recommendation(self.model, self.current_image_base64, season, hairstyle_keywords, haircolor_keywords, hairlength_keywords, status_callback=self.status_callback)
+            # start = time.time()
+            # return hairstyle_recommendation(self.model, self.current_image_base64, season, hairstyle_keywords, haircolor_keywords, hairlength_keywords, status_callback=self.status_callback)
+            ret = hairstyle_recommendation_nano(self.model, query, self.current_image_base64, hairstyle_keywords, haircolor_keywords, gender_keywords, faceshape_keywords)
+            # end = time.time()
+            # print(f'time: {end-start:.2f}')
+            return ret
 
         @tool
         def non_image_recommendation_tool(face_shape=None, gender=None, personal_color=None, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None):
