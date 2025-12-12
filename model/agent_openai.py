@@ -159,13 +159,16 @@ prompt = ChatPromptTemplate.from_messages(
 
             (예) 질의: 여름이 되었으니까 조금 짧은 머리를 하고 싶어. 그렇다고 너무 짧은건 싫은데 적당한 길이가 있을까? → hairlength_keywords="중단발"
 
-           - 사용자 질의에 특정 계절에 하고싶다는 뉘앙스의 말이 있는 경우에만 해당 계절도 정확히 추출해 season 파라미터로 전달 → non_image_recommendation_tool(season=...)
+           - 도구 호출할 때 특정 계절에 하고싶다는 계절 키워드가 있는 경우, 해당 계절을 정확히 추출해 season 파라미터로 전달 → non_image_recommendation_tool(season=...)
             (예) 질의: 봄에는 좀 추웠으니까 여름에는 좀 가벼운 머리를 하고 싶어 → non_image_recommendation_tool(season="여름")
-           - 사용자 질의에 나 여자라고! 나 남자라고! 같은 성별 언급이 있으면 여성의 경우 "Female" 남성의 경우 "Male"로 gender_keywords 파라미터로 전달 → hairstyle_recommendation_tool(gender_keywords=...)
+           - 도구 호출할 때 사용자 질의에 추천을 원하는 대상의 성별 키워드가 있는 경우, 여성의 경우 "Female" 남성의 경우 "Male"로 gender_keywords 파라미터로 전달 → hairstyle_recommendation_tool(gender_keywords=...)
             (예) 질의: 나 여자라니까;; 다시 추천해줘 → hairstyle_recommendation_tool(gender_keywords="Female")
-           - 사용자 질의에 나 얼굴형 이 ~형이야 같은 얼굴형 언급이 있으면 얼굴형 리스트를 참고해 영어로 바꾼 후 faceshape_keywords 파라미터로 전달 → hairstyle_recommendation_tool(faceshape_keywords=...)
+           - 도구 호출할 때 사용자 질의에 추천을 원하는 대상의 얼굴형 키워드가 있는 경우, 얼굴형 리스트를 참고해 영어로 바꾼 후 faceshape_keywords 파라미터로 전달 → hairstyle_recommendation_tool(faceshape_keywords=...)
             (예) 질의: 나 근데 사진은 저렇게 나왔는데 사실 얼굴형 둥근편이야 → hairstyle_recommendation_tool(faceshape_keywords="Round")
             (얼굴형 리스트: "둥근형"→"Round", "사각형"→"Square", "하트형"→"Heart", "계란형"→"Oval", "긴형"→"Oblong" )
+            - 도구 호출할 때 사용자 질의에 퍼스널 컬러에 대한 언급이 있는 경우, 퍼스널 컬러를 다음 리스트 중에서 찾아서 personalcolor_keywords 파라미터로 전달 → hairstyle_recommendation_tool(personalcolor_keywords=...)
+            (예) 질의: 나 사실 가을 웜톤이야 → hairstyle_recommendation_tool(personalcolor_keywords="가을 웜톤")
+            (퍼스널컬러 리스트: "봄 웜톤, 가을 웜톤, 겨울 쿨톤, 여름 쿨톤")
 
            **답변 순서**
            - 모든 설명은 지어내지말고 도구로부터 받은 값만을 활용해 생성하고 사용자 **질의 내용과 자연스럽고 논리적으로 연결되게** 한국어로 설명할 것
@@ -329,10 +332,10 @@ class HairstyleAgent:
     def _build_agent(self):
         """내부 agent 생성"""
 
-        llm = load_openai(model_name="gpt-5.1-chat-latest",temperature=1)
+        llm = load_openai(model_name="gpt-5.2-chat-latest",temperature=1)
         # Tool 정의 - self.current_image_base64 사용
         @tool
-        def hairstyle_recommendation_tool(season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None, gender_keywords=None, faceshape_keywords=None):
+        def hairstyle_recommendation_tool(faceshape_keywords=None, gender_keywords=None, personalcolor_keywords=None, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None):
             """
             사용자의 요청에 따라 어울리는 헤어스타일 또는 헤어컬러를 찾아서 알려줍니다.
             """
@@ -341,7 +344,7 @@ class HairstyleAgent:
             print(f"[INFO] Tool 실행: Base64 길이 = {len(self.current_image_base64)}")
 
             # 캐시에서 최종 답변 검색
-            cached = self.search_cache(season=season, hairstyle_keywords=hairstyle_keywords, haircolor_keywords=haircolor_keywords, hairlength_keywords=hairlength_keywords)
+            cached = self.search_cache(faceshape_keywords=faceshape_keywords, gender_keywords=gender_keywords, personalcolor_keywords=personalcolor_keywords, season=season, hairstyle_keywords=hairstyle_keywords, haircolor_keywords=haircolor_keywords, hairlength_keywords=hairlength_keywords)
 
             if cached is not None:
                 # 캐시된 답변을 그대로 반환 (이미 GPT가 생성한 최종 답변)
@@ -349,9 +352,9 @@ class HairstyleAgent:
                 self.cached_final_answer = cached
                 return "캐시에서 답변을 찾았습니다. 이 정보를 바탕으로 답변해주세요: " + cached
 
-            result = hairstyle_recommendation(self.model, self.current_image_base64, season, hairstyle_keywords, haircolor_keywords, hairlength_keywords, status_callback=self.status_callback)
+            result = hairstyle_recommendation(self.model, self.current_image_base64, faceshape_keywords, gender_keywords, personalcolor_keywords, season, hairstyle_keywords, haircolor_keywords, hairlength_keywords, status_callback=self.status_callback)
             # 캐시 저장은 invoke()에서 최종 답변과 함께 수행
-            self.last_tool_params = {'season': season, 'hairstyle_keywords': hairstyle_keywords, 'haircolor_keywords': haircolor_keywords, 'hairlength_keywords': hairlength_keywords}
+            self.last_tool_params = {'faceshape_keywords': faceshape_keywords,'gender_keywords': gender_keywords, 'personalcolor_keywords': personalcolor_keywords,'season': season, 'hairstyle_keywords': hairstyle_keywords, 'haircolor_keywords': haircolor_keywords, 'hairlength_keywords': hairlength_keywords}
             self.last_tool_cache_hit = False
 
             return result

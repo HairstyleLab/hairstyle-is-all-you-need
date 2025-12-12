@@ -20,7 +20,7 @@ from model.utility.face_swap import face_swap
 
 # embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cuda")
 embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cuda")    
-retriever, vectorstore = load_retriever("rag/db/styles_added_hf", embeddings)
+retriever, vectorstore = load_retriever("rag/db/new_hf_1211", embeddings)
 
 def skin_tone_choice(result):
     dominant_result = tuple(int(result['faces'][0]['dominant_colors'][0]['color'].lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
@@ -169,7 +169,7 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
     return result_docs, summary
 
 
-def hairstyle_recommendation(model, image_base64, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None, status_callback=None, gender_keywords=None,faceshape_keywords=None):
+def hairstyle_recommendation(model, image_base64, faceshape_keywords=None, gender_keywords=None, personalcolor_keywords=None, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None, status_callback=None):
     if status_callback:
         status_callback("추천 헤어스타일 검색 중...")
 
@@ -190,7 +190,10 @@ def hairstyle_recommendation(model, image_base64, season=None, hairstyle_keyword
     try:
         result = stone.process(temp_path, image_type='color',return_report_image=False,tone_palette='perla')
         skin_tone = skin_tone_choice(result)
-        personal_color = classify_personal_color(skin_tone)
+        if personalcolor_keywords is not None:
+            personal_color = personalcolor_keywords
+        else:
+            personal_color = classify_personal_color(skin_tone)
         # 만약 gender_keywords, faceshape_keywords가 None이 아닐 경우
         if gender_keywords is None and faceshape_keywords is None:
             face_shape, gender = get_face_shape_and_gender(model, temp_path)
@@ -200,6 +203,10 @@ def hairstyle_recommendation(model, image_base64, season=None, hairstyle_keyword
         elif gender_keywords is None and faceshape_keywords is not None:
             _, gender = get_face_shape_and_gender(model,temp_path)
             face_shape = faceshape_keywords
+        else:
+            face_shape = faceshape_keywords
+            gender = gender_keywords
+        
 
         with open("config/hairstyle_list.json", "r", encoding="utf-8") as f:
             hairstyle_data = json.load(f)
