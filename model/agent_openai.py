@@ -5,14 +5,14 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_classic.agents import AgentExecutor,create_openai_tools_agent
 from model.model_load import load_openai
-from model.tools import hairstyle_recommendation, hairstyle_generation, get_tool_list, non_image_recommendation
+from model.tools import hairstyle_recommendation, hairstyle_generation, get_tool_list, non_image_recommendation, hairstyle_recommendation_nano
 from langchain_community.tools import DuckDuckGoSearchRun
 from langchain_openai import OpenAIEmbeddings
 from rag.qa_cache import QACache
 import base64
 from .system_prompt import sys_prompt
 import ast
-
+import time
 
 prompt = ChatPromptTemplate.from_messages(
     [
@@ -335,9 +335,10 @@ class HairstyleAgent:
         llm = load_openai(model_name="gpt-5.2-chat-latest",temperature=1)
         # Tool 정의 - self.current_image_base64 사용
         @tool
-        def hairstyle_recommendation_tool(faceshape_keywords=None, gender_keywords=None, personalcolor_keywords=None, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None):
+        def hairstyle_recommendation_tool(faceshape_keywords=None, gender_keywords=None, personalcolor_keywords=None, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None, query=None):
             """
             사용자의 요청에 따라 어울리는 헤어스타일 또는 헤어컬러를 찾아서 알려줍니다.
+            query는 사용자의 full query를 전달합니다.
             """
             if self.current_image_base64 is None:
                 return "오류: 이미지가 제공되지 않았습니다."
@@ -351,8 +352,14 @@ class HairstyleAgent:
                 self.last_tool_cache_hit = True
                 self.cached_final_answer = cached
                 return "캐시에서 답변을 찾았습니다. 이 정보를 바탕으로 답변해주세요: " + cached
-
+            # start = time.time()
+            
             result = hairstyle_recommendation(self.model, self.current_image_base64, faceshape_keywords, gender_keywords, personalcolor_keywords, season, hairstyle_keywords, haircolor_keywords, hairlength_keywords, status_callback=self.status_callback)
+            # result = hairstyle_recommendation_nano(self.model, query, self.current_image_base64, hairstyle_keywords, haircolor_keywords, gender_keywords, faceshape_keywords)
+
+            # end = time.time()
+            # print(f'time: {end-start:.2f}') 
+            
             # 캐시 저장은 invoke()에서 최종 답변과 함께 수행
             self.last_tool_params = {'faceshape_keywords': faceshape_keywords,'gender_keywords': gender_keywords, 'personalcolor_keywords': personalcolor_keywords,'season': season, 'hairstyle_keywords': hairstyle_keywords, 'haircolor_keywords': haircolor_keywords, 'hairlength_keywords': hairlength_keywords}
             self.last_tool_cache_hit = False
