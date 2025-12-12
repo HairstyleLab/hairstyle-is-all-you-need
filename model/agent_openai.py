@@ -7,7 +7,12 @@ from langchain_classic.agents import AgentExecutor,create_openai_tools_agent
 from model.model_load import load_openai
 from model.tools import hairstyle_recommendation, hairstyle_generation, get_tool_list, non_image_recommendation, hairstyle_recommendation_nano
 from langchain_community.tools import DuckDuckGoSearchRun
+from langchain_openai import OpenAIEmbeddings
+from rag.qa_cache import QACache
 import base64
+from .system_prompt import sys_prompt
+import ast
+import time
 
 prompt = ChatPromptTemplate.from_messages(
     [
@@ -154,13 +159,16 @@ prompt = ChatPromptTemplate.from_messages(
 
             (예) 질의: 여름이 되었으니까 조금 짧은 머리를 하고 싶어. 그렇다고 너무 짧은건 싫은데 적당한 길이가 있을까? → hairlength_keywords="중단발"
 
-           - 사용자 질의에 특정 계절에 하고싶다는 뉘앙스의 말이 있는 경우에만 해당 계절도 정확히 추출해 season 파라미터로 전달 → non_image_recommendation_tool(season=...)
+           - 도구 호출할 때 특정 계절에 하고싶다는 계절 키워드가 있는 경우, 해당 계절을 정확히 추출해 season 파라미터로 전달 → non_image_recommendation_tool(season=...)
             (예) 질의: 봄에는 좀 추웠으니까 여름에는 좀 가벼운 머리를 하고 싶어 → non_image_recommendation_tool(season="여름")
-           - 사용자 질의에 나 여자라고! 나 남자라고! 같은 성별 언급이 있으면 여성의 경우 "Female" 남성의 경우 "Male"로 gender_keywords 파라미터로 전달 → hairstyle_recommendation_tool(gender_keywords=...)
+           - 도구 호출할 때 사용자 질의에 추천을 원하는 대상의 성별 키워드가 있는 경우, 여성의 경우 "Female" 남성의 경우 "Male"로 gender_keywords 파라미터로 전달 → hairstyle_recommendation_tool(gender_keywords=...)
             (예) 질의: 나 여자라니까;; 다시 추천해줘 → hairstyle_recommendation_tool(gender_keywords="Female")
-           - 사용자 질의에 나 얼굴형 이 ~형이야 같은 얼굴형 언급이 있으면 얼굴형 리스트를 참고해 영어로 바꾼 후 faceshape_keywords 파라미터로 전달 → hairstyle_recommendation_tool(faceshape_keywords=...)
+           - 도구 호출할 때 사용자 질의에 추천을 원하는 대상의 얼굴형 키워드가 있는 경우, 얼굴형 리스트를 참고해 영어로 바꾼 후 faceshape_keywords 파라미터로 전달 → hairstyle_recommendation_tool(faceshape_keywords=...)
             (예) 질의: 나 근데 사진은 저렇게 나왔는데 사실 얼굴형 둥근편이야 → hairstyle_recommendation_tool(faceshape_keywords="Round")
             (얼굴형 리스트: "둥근형"→"Round", "사각형"→"Square", "하트형"→"Heart", "계란형"→"Oval", "긴형"→"Oblong" )
+            - 도구 호출할 때 사용자 질의에 퍼스널 컬러에 대한 언급이 있는 경우, 퍼스널 컬러를 다음 리스트 중에서 찾아서 personalcolor_keywords 파라미터로 전달 → hairstyle_recommendation_tool(personalcolor_keywords=...)
+            (예) 질의: 나 사실 가을 웜톤이야 → hairstyle_recommendation_tool(personalcolor_keywords="가을 웜톤")
+            (퍼스널컬러 리스트: "봄 웜톤, 가을 웜톤, 겨울 쿨톤, 여름 쿨톤")
 
            **답변 순서**
            - 모든 설명은 지어내지말고 도구로부터 받은 값만을 활용해 생성하고 사용자 **질의 내용과 자연스럽고 논리적으로 연결되게** 한국어로 설명할 것
@@ -231,28 +239,103 @@ prompt = ChatPromptTemplate.from_messages(
 )
 
 class HairstyleAgent:
-    """헤어스타일 추천 Agent - 각 인스턴스가 독립적인 이미지 저장소를 가짐"""
 
     def __init__(self, model, client):
-        """
-        Args:
-            model: IdentiFace 모델 (얼굴 분석용)
-        """
+
         self.model = model
         self.client = client
         self.last_inputs = None
         self.current_image_base64 = None  # 인스턴스별 이미지 저장
         self.gen_flag = False             # 이미지 생성했는지 여부
-        self.status_callback = None       # 상태 콜백 함수
+        self.status_callback = None
+
+        # 캐시 관련 변수
+        self.last_tool_params = None      # 마지막 Tool 호출 파라미터
+        self.last_tool_cache_hit = False  # 캐시 히트 여부
+        self.cached_final_answer = None   # 캐시된 최종 답변
+
+        # QA 캐시 초기화
+        self.qa_cache = self._init_qa_cache()
         self.agent = self._build_agent()
+        
+    def _init_qa_cache(self):
+        try:
+            embeddings = OpenAIEmbeddings(model='text-embedding-3-small')
+            qa_cache = QACache(
+                json_path="rag/qa.json",
+                embeddings=embeddings,
+                vectorstore_path="rag/qa_vectorstore",
+                similarity_threshold=0.85,
+                batch_size=1
+            )
+            print("QA Cache 초기화 완료")
+            return qa_cache
+        except Exception as e:
+            print(f"QA Cache 초기화 실패: {e}")
+            return None
+        
+    def search_cache(self, **kwargs):
+        """캐시에서 답변 검색 - 모든 키워드 인자를 받아서 처리"""
+        if self.qa_cache:
+            try:
+                # 질문 문자열 생성 - 특정 순서로 정렬 (gender, face_shape, hairlength, season, hairstyle, haircolor, personal_color)
+                order = ['gender', 'face_shape', 'hairlength_keywords', 'season', 'hairstyle_keywords', 'haircolor_keywords', 'personal_color']
+                question_parts = []
+                for key in order:
+                    if key in kwargs and kwargs[key] is not None:
+                        question_parts.append(str(kwargs[key]))
+
+                if question_parts:
+                    cache_question = " ".join(question_parts)
+
+                    # 캐시에서 답변 검색
+                    cached_doc = self.qa_cache.get_answer(cache_question)
+                    if cached_doc:
+                        print(f"[CACHE HIT] 캐시에서 답변 반환: {cache_question[:50]}...")
+                        # 문자열 형태의 최종 답변을 바로 반환
+                        cached_answer = cached_doc.metadata['answer']
+                        return cached_answer
+                    else:
+                        print(f"[CACHE MISS] 캐시에 없음, 새로 추론: {cache_question[:50]}...")
+                        return None
+
+            except Exception as e:
+                print(f"Cache 검색 실패: {e}")
+        return None
+                    
+    def store_cache(self, answer, **kwargs):
+        """캐시에 답변 저장 - 모든 키워드 인자를 받아서 처리"""
+        if self.qa_cache:
+            try:
+                # 질문 문자열 생성 - 특정 순서로 정렬 (gender, face_shape, hairlength, season, hairstyle, haircolor, personal_color)
+                order = ['gender', 'face_shape', 'hairlength_keywords', 'season', 'hairstyle_keywords', 'haircolor_keywords', 'personal_color']
+                question_parts = []
+                for key in order:
+                    if key in kwargs and kwargs[key] is not None:
+                        question_parts.append(str(kwargs[key]))
+
+                if question_parts:
+                    cache_question = " ".join(question_parts)
+
+                    # 최종 답변(문자열) 저장
+                    if isinstance(answer, str):
+                        cache_answer = answer
+                        self.qa_cache.add_qa(cache_question, cache_answer)
+                        print("Cache Size:", self.qa_cache.get_cache_size())
+                        print("Is Saved:", self.qa_cache.verify_saved(cache_question))
+                        print(f"Cache 저장: {cache_question[:50]}...")
+                    
+
+            except Exception as e:
+                print(f"Cache 저장 실패: {e}")
     
     def _build_agent(self):
         """내부 agent 생성"""
 
-        llm = load_openai(model_name="gpt-5.1-chat-latest",temperature=1)
+        llm = load_openai(model_name="gpt-5.2-chat-latest",temperature=1)
         # Tool 정의 - self.current_image_base64 사용
         @tool
-        def hairstyle_recommendation_tool(season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None, gender_keywords=None, faceshape_keywords=None, query=None):
+        def hairstyle_recommendation_tool(faceshape_keywords=None, gender_keywords=None, personalcolor_keywords=None, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None, query=None):
             """
             사용자의 요청에 따라 어울리는 헤어스타일 또는 헤어컬러를 찾아서 알려줍니다.
             query는 사용자의 full query를 전달합니다.
@@ -260,14 +343,28 @@ class HairstyleAgent:
             if self.current_image_base64 is None:
                 return "오류: 이미지가 제공되지 않았습니다."
             print(f"[INFO] Tool 실행: Base64 길이 = {len(self.current_image_base64)}")
-            import time
 
+            # 캐시에서 최종 답변 검색
+            cached = self.search_cache(faceshape_keywords=faceshape_keywords, gender_keywords=gender_keywords, personalcolor_keywords=personalcolor_keywords, season=season, hairstyle_keywords=hairstyle_keywords, haircolor_keywords=haircolor_keywords, hairlength_keywords=hairlength_keywords)
+
+            if cached is not None:
+                # 캐시된 답변을 그대로 반환 (이미 GPT가 생성한 최종 답변)
+                self.last_tool_cache_hit = True
+                self.cached_final_answer = cached
+                return "캐시에서 답변을 찾았습니다. 이 정보를 바탕으로 답변해주세요: " + cached
             # start = time.time()
-            # return hairstyle_recommendation(self.model, self.current_image_base64, season, hairstyle_keywords, haircolor_keywords, hairlength_keywords, status_callback=self.status_callback)
-            ret = hairstyle_recommendation_nano(self.model, query, self.current_image_base64, hairstyle_keywords, haircolor_keywords, gender_keywords, faceshape_keywords)
+            
+            result = hairstyle_recommendation(self.model, self.current_image_base64, faceshape_keywords, gender_keywords, personalcolor_keywords, season, hairstyle_keywords, haircolor_keywords, hairlength_keywords, status_callback=self.status_callback)
+            # result = hairstyle_recommendation_nano(self.model, query, self.current_image_base64, hairstyle_keywords, haircolor_keywords, gender_keywords, faceshape_keywords)
+
             # end = time.time()
-            # print(f'time: {end-start:.2f}')
-            return ret
+            # print(f'time: {end-start:.2f}') 
+            
+            # 캐시 저장은 invoke()에서 최종 답변과 함께 수행
+            self.last_tool_params = {'faceshape_keywords': faceshape_keywords,'gender_keywords': gender_keywords, 'personalcolor_keywords': personalcolor_keywords,'season': season, 'hairstyle_keywords': hairstyle_keywords, 'haircolor_keywords': haircolor_keywords, 'hairlength_keywords': hairlength_keywords}
+            self.last_tool_cache_hit = False
+
+            return result
 
         @tool
         def non_image_recommendation_tool(face_shape=None, gender=None, personal_color=None, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None):
@@ -276,7 +373,21 @@ class HairstyleAgent:
             """
             print(f"[INFO] TOOL 실행 -> 키워드 얼굴형:{face_shape}, 성별:{gender}, 퍼컬: {personal_color}, 계절: {season}, 키워드:{hairstyle_keywords} {haircolor_keywords}")
 
-            return non_image_recommendation(face_shape, gender, personal_color, season, hairstyle_keywords, haircolor_keywords, hairlength_keywords, status_callback=self.status_callback)
+            # 캐시에서 최종 답변 검색
+            cached = self.search_cache(season=season, hairstyle_keywords=hairstyle_keywords, haircolor_keywords=haircolor_keywords, hairlength_keywords=hairlength_keywords, gender=gender, face_shape=face_shape, personal_color=personal_color)
+
+            if cached is not None:
+                # 캐시된 답변을 그대로 반환 (이미 GPT가 생성한 최종 답변)
+                self.last_tool_cache_hit = True
+                self.cached_final_answer = cached
+                return "캐시에서 답변을 찾았습니다. 이 정보를 바탕으로 답변해주세요: " + cached
+
+            result = non_image_recommendation(face_shape, gender, personal_color, season, hairstyle_keywords, haircolor_keywords, hairlength_keywords, status_callback=self.status_callback)
+            # 캐시 저장은 invoke()에서 최종 답변과 함께 수행
+            self.last_tool_params = {'season': season, 'hairstyle_keywords': hairstyle_keywords, 'haircolor_keywords': haircolor_keywords, 'hairlength_keywords': hairlength_keywords, 'gender': gender, 'face_shape': face_shape, 'personal_color': personal_color}
+            self.last_tool_cache_hit = False
+
+            return result
           
 
         @tool
@@ -349,11 +460,16 @@ class HairstyleAgent:
     def invoke(self, inputs, config=None, **kwargs):
         """
         Agent 실행 - 입력에서 이미지를 자동으로 추출
-        
+
         Args:
             inputs: {"input": [HumanMessage(...)]} 형식
             config: {"configurable": {"session_id": "..."}} 형식
         """
+        # 캐시 플래그 초기화 (새 요청 시작 시 이전 상태 리셋)
+        self.last_tool_cache_hit = False
+        self.cached_final_answer = None
+        self.last_tool_params = None
+
         # 입력에서 이미지 추출
         if 'input' in inputs:
             messages = inputs['input']
@@ -369,9 +485,23 @@ class HairstyleAgent:
                     else:
                         if self.current_image_base64 is not None:
                             print(f"[INFO] 이전 이미지 유지! Base64 길이: {len(self.current_image_base64)}")
-        
-        # 원래 agent 실행
-        return self.agent.invoke(inputs, config, **kwargs)
+
+        # Agent 실행
+        result = self.agent.invoke(inputs, config, **kwargs)
+
+        # 캐시 히트였으면 Tool에서 설정한 답변 반환
+        if self.last_tool_cache_hit and self.cached_final_answer:
+            print("[CACHE HIT] 캐시된 최종 답변 사용")
+            result['output'] = self.cached_final_answer
+
+        # 최종 답변을 캐시에 저장 (tool이 실행되었고 캐시 히트가 아닌 경우)
+        if self.last_tool_params is not None and not self.last_tool_cache_hit:
+            final_answer = result.get('output', '')
+            if final_answer:
+                self.store_cache(final_answer, **self.last_tool_params)
+                print(f"[CACHE STORE] 최종 답변 캐시 저장 완료")
+
+        return result
 
 
 def build_agent(model, client):
