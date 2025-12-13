@@ -506,7 +506,7 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, hairlengt
         if 'temp_gen_path' in locals() and os.path.exists(temp_gen_path):
             os.unlink(temp_gen_path)
 
-def hairstyle_recommendation_nano(model, query, image_base64, hairstyle_keywords=None, haircolor_keywords=None, gender_keywords=None, faceshape_keywords=None):
+def hairstyle_recommendation_nano(model, query, image_base64, hairstyle_keywords=None, haircolor_keywords=None, gender_keywords=None, faceshape_keywords=None, vectorstore=None):
     print('in recommendation tmp')
     
     if image_base64.startswith('data:image'):
