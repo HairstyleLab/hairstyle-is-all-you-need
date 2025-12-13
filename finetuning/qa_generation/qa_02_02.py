@@ -3,35 +3,28 @@ import base64
 import random
 from pathlib import Path
 from openai import OpenAI
+from dotenv import load_dotenv
 
+load_dotenv()
 client = OpenAI()
 
-def load_images_as_base64(image_folder: str) -> list:
-    """이미지 폴더에서 모든 이미지를 base64로 로드"""
-    
-    image_folder = Path(image_folder)
-    image_extensions = {".jpg", ".jpeg", ".png", ".webp"}
-    
-    images = []
-    for img_path in image_folder.iterdir():
-        if img_path.suffix.lower() in image_extensions:
-            with open(img_path, "rb") as f:
-                img_base64 = base64.b64encode(f.read()).decode("utf-8")
-                
-            # 확장자에 따른 MIME 타입
-            mime_type = "image/jpeg" if img_path.suffix.lower() in {".jpg", ".jpeg"} else f"image/{img_path.suffix[1:].lower()}"
-            
-            images.append({
-                "filename": img_path.name,
-                "base64": f"data:{mime_type};base64,{img_base64}"
-            })
-    
-    print(f"로드된 이미지: {len(images)}개")
-    return images
-
+HAIR_LENGTH_CATEGORIES = {
+    "male": {
+        "숏": "귀 위~귀 아래 길이. 목이 대부분 드러나는 매우 짧은 머리.",
+        "미디엄": "귀 아래~턱선 정도 길이. 윗머리 볼륨·가르마 스타일 연출 가능한 중간 기장.",
+        "장발": "턱선 아래~어깨 이상 길이. 자연스러운 웨이브 표현 가능한 긴머리."
+    },
+    "female": {
+        "숏": "귀 위~귀 아래 짧은 길이.",
+        "단발": "턱선~턱 아래 길이.",
+        "중단발": "어깨 위~어깨 닿는 길이. 머리끝이 어깨를 스치는 기장.",
+        "미디엄": "어깨 아래~쇄골 길이. 세미 롱으로 자연스러운 웨이브·레이어드 가능.",
+        "장발": "쇄골 아래~가슴선 이상 길이. 긴머리 전반을 포함."
+    }
+}
 
 def generate_image_recommendation_samples(num_samples: int = 50) -> list:
-    """이미지 있는 헤어스타일 추천 샘플 생성"""
+    """이미지 있는 헤어스타일 추천 샘플 생성 (기장 포함)"""
     
     prompt = f"""
 헤어스타일 추천 챗봇의 학습 데이터를 생성해주세요.
@@ -41,28 +34,65 @@ def generate_image_recommendation_samples(num_samples: int = 50) -> list:
 이때 hairstyle_recommendation_tool을 호출해야 합니다.
 
 [파라미터 추출 규칙]
-1. keywords: 사용자가 원하는 스타일/컬러 관련 키워드 (시원한, 가벼운, 볼륨있는, 청순한, 밝은, 어두운 등)
-   - 키워드가 없으면 빈 문자열 ""
-2. season: 봄, 여름, 가을, 겨울 (언급된 경우만)
+1. hairstyle_keywords: 사용자가 원하는 헤어스타일 관련 키워드 (시원한, 가벼운, 볼륨있는, 청순한, 층 내는, 자연스러운, 깔끔한, 댄디한, 펑크한, 귀여운, 시크한 등)
+   - 키워드가 없으면 null
+   
+2. haircolor_keywords: 사용자가 원하는 헤어컬러 관련 키워드 (밝은, 어두운, 톤다운, 브라운, 애쉬, 골드, 레드, 블랙, 자연스러운 색, 적당한 밝기 등)
+   - 키워드가 없으면 null
+   
+3. hairlength_keywords: 사용자가 원하는 기장을 아래 카테고리 중 하나로 변환
+   - 남자의 경우: "숏", "미디엄", "장발" 중 하나
+   - 여자의 경우: "숏", "단발", "중단발", "미디엄", "장발" 중 하나
+   - 기장 언급이 없으면 null
+   
+   [기장 카테고리 설명]
+   남자:
+   - 숏: 귀 위~귀 아래 길이. 목이 대부분 드러나는 매우 짧은 머리.
+   - 미디엄: 귀 아래~턱선 정도 길이. 윗머리 볼륨·가르마 스타일 연출 가능한 중간 기장.
+   - 장발: 턱선 아래~어깨 이상 길이. 자연스러운 웨이브 표현 가능한 긴머리.
+   
+   여자:
+   - 숏: 귀 위~귀 아래 짧은 길이.
+   - 단발: 턱선~턱 아래 길이.
+   - 중단발: 어깨 위~어깨 닿는 길이. 머리끝이 어깨를 스치는 기장.
+   - 미디엄: 어깨 아래~쇄골 길이. 세미 롱으로 자연스러운 웨이브·레이어드 가능.
+   - 장발: 쇄골 아래~가슴선 이상 길이. 긴머리 전반을 포함.
 
-[생성할 질문 유형]
+4. gender: 질의에서 성별이 명시되거나 유추 가능한 경우 "male" 또는 "female" (없으면 null)
+
+[생성할 질문 유형 - 다양하게 조합]
 1. 단순 추천: "이 사진으로 어울리는 머리 추천해줘"
-2. 키워드 포함: "이 얼굴에 어울리는 시원하고 가벼운 머리 추천해줘"
-3. 계절 포함: "여름인데 어울리는 헤어스타일 추천해줘"
-4. 키워드 + 계절: "겨울이라 따뜻해 보이는 볼륨있는 머리 추천해줘"
-5. 염색 포함: "밝은 색으로 염색하고 싶은데 추천해줘"
-6. 복합: "여름이라 시원하고 가벼운 느낌에 톤다운된 색으로 추천해줘"
+2. 스타일 키워드만: "가벼운 느낌의 머리 추천해줘"
+3. 컬러 키워드만: "밝은 색으로 염색하고 싶은데 추천해줘"
+4. 기장 키워드만: "짧은 머리 하고 싶어", "어깨 정도 오는 머리 추천해줘"
+5. 스타일 + 컬러: "볼륨있고 톤다운된 색으로 추천해줘"
+6. 스타일 + 기장: "가벼운 느낌에 단발로 잘라볼까 하는데"
+7. 컬러 + 기장: "밝은 색에 긴머리 추천해줘"
+8. 스타일 + 컬러 + 기장: "시원한 느낌에 밝은 색, 어깨 정도 오는 기장으로"
+9. 계절 포함: "여름이라 시원하고 짧은 머리 추천해줘"
+10. 성별 명시: "남자인데 깔끔한 숏컷 추천해줘", "여자인데 단발 어울릴까요?"
+
+[기장 표현 예시 - 이런 표현들을 적절한 카테고리로 변환]
+- "짧은 머리", "숏컷", "투블럭" → 숏
+- "턱선 정도", "귀 밑으로" → 남자는 미디엄
+- "단발", "턱 아래 정도" → 단발
+- "어깨 정도", "쇄골 위", "적당한 길이" → 중단발
+- "쇄골 아래", "세미롱" → 미디엄
+- "긴머리", "장발", "허리까지" → 장발
 
 다양한 말투로 {num_samples}개 생성해주세요.
 - "이 사진", "내 사진", "이 얼굴", "내 얼굴" 등 다양한 표현 사용
 - 반말, 존댓말, 이모지 등 다양하게
+- 모든 파라미터가 있는 경우, 일부만 있는 경우, 아무것도 없는 경우 골고루 포함
 
 [출력 형식]
 JSON 배열로 출력. 각 항목:
 {{
   "user": "사용자 질의 (이미지 언급 포함)",
-  "keywords": "키워드1, 키워드2" (없으면 ""),
-  "season": "여름" (없으면 null)
+  "hairstyle_keywords": "키워드1, 키워드2" 또는 null,
+  "haircolor_keywords": "키워드1, 키워드2" 또는 null,
+  "hairlength_keywords": "카테고리명" 또는 null,
+  "gender": "male" 또는 "female" 또는 null
 }}
 
 JSON 배열만 출력하고 다른 설명은 하지 마세요.
@@ -74,7 +104,6 @@ JSON 배열만 출력하고 다른 설명은 하지 마세요.
         temperature=0.9,
     )
     
-    # JSON 파싱
     content = response.choices[0].message.content.strip()
     if content.startswith("```"):
         content = content.split("\n", 1)[1]
@@ -85,27 +114,26 @@ JSON 배열만 출력하고 다른 설명은 하지 마세요.
     return samples
 
 
-def convert_to_training_format(samples: list, images: list) -> list:
-    """생성된 샘플을 학습 데이터 형식으로 변환 (이미지 랜덤 선택)"""
-    
+def convert_to_training_format(samples: list) -> list:
+    """생성된 샘플을 학습 데이터 형식으로 변환 (이미지는 build_dataset.py에서 매칭)"""
+
     training_data = []
-    
+
     for i, sample in enumerate(samples):
-        # 랜덤 이미지 선택
-        selected_image = random.choice(images)
-        
-        # arguments 구성
+
         arguments = {}
-        if sample.get("keywords"):
-            arguments["keywords"] = sample["keywords"]
-        else:
-            arguments["keywords"] = ""
-        
-        if sample.get("season"):
-            arguments["season"] = sample["season"]
-        
+
+        if sample.get("hairstyle_keywords"):
+            arguments["hairstyle_keywords"] = sample["hairstyle_keywords"]
+
+        if sample.get("haircolor_keywords"):
+            arguments["haircolor_keywords"] = sample["haircolor_keywords"]
+
+        if sample.get("hairlength_keywords"):
+            arguments["hairlength_keywords"] = sample["hairlength_keywords"]
+
         arguments_str = json.dumps(arguments, ensure_ascii=False)
-        
+
         training_sample = {
             "messages": [
                 {"role": "system", "content": ""},
@@ -113,7 +141,7 @@ def convert_to_training_format(samples: list, images: list) -> list:
                     "role": "user",
                     "content": [
                         {"type": "text", "text": sample["user"]},
-                        {"type": "image_url", "image_url": {"url": selected_image["base64"]}}
+                        {"type": "image_url", "image_url": {"url": ""}}
                     ]
                 },
                 {
@@ -130,59 +158,91 @@ def convert_to_training_format(samples: list, images: list) -> list:
                         }
                     ]
                 }
-            ]
+            ],
+            "image_type": "normal"
         }
         training_data.append(training_sample)
-    
+
     return training_data
 
 
 def save_to_jsonl(data: list, filename: str):
     """JSONL 파일로 저장"""
+    output_path = Path(filename)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
     with open(filename, "w", encoding="utf-8") as f:
         for item in data:
             f.write(json.dumps(item, ensure_ascii=False) + "\n")
     print(f"저장 완료: {filename} ({len(data)}개 샘플)")
 
 
+def analyze_samples(samples: list):
+    """생성된 샘플의 파라미터 분포 분석"""
+    stats = {
+        "total": len(samples),
+        "has_hairstyle": 0,
+        "has_haircolor": 0,
+        "has_hairlength": 0,
+        "has_gender": 0,
+        "hairlength_distribution": {},
+        "gender_distribution": {"male": 0, "female": 0, "null": 0}
+    }
+    
+    for sample in samples:
+        if sample.get("hairstyle_keywords"):
+            stats["has_hairstyle"] += 1
+        if sample.get("haircolor_keywords"):
+            stats["has_haircolor"] += 1
+        if sample.get("hairlength_keywords"):
+            stats["has_hairlength"] += 1
+            length = sample["hairlength_keywords"]
+            stats["hairlength_distribution"][length] = stats["hairlength_distribution"].get(length, 0) + 1
+        if sample.get("gender"):
+            stats["has_gender"] += 1
+            stats["gender_distribution"][sample["gender"]] += 1
+        else:
+            stats["gender_distribution"]["null"] += 1
+    
+    print("\n=== 샘플 분포 분석 ===")
+    print(f"총 샘플 수: {stats['total']}")
+    print(f"hairstyle_keywords 포함: {stats['has_hairstyle']}개 ({stats['has_hairstyle']/stats['total']*100:.1f}%)")
+    print(f"haircolor_keywords 포함: {stats['has_haircolor']}개 ({stats['has_haircolor']/stats['total']*100:.1f}%)")
+    print(f"hairlength_keywords 포함: {stats['has_hairlength']}개 ({stats['has_hairlength']/stats['total']*100:.1f}%)")
+    print(f"gender 포함: {stats['has_gender']}개 ({stats['has_gender']/stats['total']*100:.1f}%)")
+    print(f"\n기장 분포: {stats['hairlength_distribution']}")
+    print(f"성별 분포: {stats['gender_distribution']}")
+    
+    return stats
+
+
 def get_data(
-    image_folder: str = "images/normal_faces",
-    num_samples: int = 50,
-    output_file: str = "image_recommendation.jsonl"
+    num_samples: int = 10,
+    output_file: str = "finetuning/samples/qa_02_02.jsonl"
 ):
-    """메인 함수: 이미지 로드 → 데이터 생성 → 변환 → 저장"""
-    
-    # 1. 이미지 로드
-    print(f"이미지 폴더 로드 중: {image_folder}")
-    images = load_images_as_base64(image_folder)
-    
-    if not images:
-        raise ValueError(f"이미지가 없습니다: {image_folder}")
-    
-    # 2. GPT로 샘플 생성
+    """메인 함수: 텍스트 질의-응답 생성 (이미지는 build_dataset.py에서 매칭)"""
+
     print(f"이미지 있는 추천 샘플 {num_samples}개 생성 중...")
     raw_samples = generate_image_recommendation_samples(num_samples)
     print(f"생성 완료: {len(raw_samples)}개")
-    
-    # 3. 학습 데이터 형식으로 변환 (이미지 랜덤 매칭)
-    training_data = convert_to_training_format(raw_samples, images)
-    
-    # 4. JSONL 저장
+
+    analyze_samples(raw_samples)
+
+    training_data = convert_to_training_format(raw_samples)
+
     save_to_jsonl(training_data, output_file)
-    
+
     return training_data
 
 
 if __name__ == "__main__":
     data = get_data(
-        image_folder="images/normal_faces",  # 정상 얼굴 이미지 폴더
-        num_samples=50,
-        output_file="samples/image_recommendation.jsonl"
+        num_samples=100,
+        output_file="finetuning/samples/qa_02_02.jsonl"
     )
     
-    # 확인용 출력
     print("\n=== 샘플 미리보기 ===")
-    for i, sample in enumerate(data[:3]):
+    for i, sample in enumerate(data[:5]):
         user_content = sample['messages'][1]['content']
         text = user_content[0]['text']
         img_preview = user_content[1]['image_url']['url'][:50] + "..."
@@ -194,43 +254,3 @@ if __name__ == "__main__":
         print(f"    Image: {img_preview}")
         print(f"    Tool: {tool_call['function']['name']}")
         print(f"    Args: {args}")
-
-
-## 폴더 구조
-"""
-project/
-├── images/
-│   └── normal_faces/       # 정상 얼굴 이미지 (1명)
-│       ├── face1.jpg
-│       ├── face2.jpg
-│       └── ...
-├── samples/
-│   └── image_recommendation.jsonl
-└── generate_image_recommendation.py
-```
-
-## 실행 결과 예시
-```
-이미지 폴더 로드 중: images/normal_faces
-로드된 이미지: 5개
-이미지 있는 추천 샘플 50개 생성 중...
-생성 완료: 50개
-저장 완료: samples/image_recommendation.jsonl (50개 샘플)
-
-=== 샘플 미리보기 ===
-
-[1] Text: 이 사진으로 어울리는 헤어스타일 추천해줘~
-    Image: data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQAB...
-    Tool: hairstyle_recommendation_tool
-    Args: {"keywords": ""}
-
-[2] Text: 여름인데 시원하고 가벼운 느낌으로 추천해줘!
-    Image: data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQAB...
-    Tool: hairstyle_recommendation_tool
-    Args: {"keywords": "시원한, 가벼운", "season": "여름"}
-
-[3] Text: 내 얼굴에 맞는 볼륨있는 머리 추천해주세요
-    Image: data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQAB...
-    Tool: hairstyle_recommendation_tool
-    Args: {"keywords": "볼륨있는"}
-"""

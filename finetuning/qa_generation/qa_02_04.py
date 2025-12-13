@@ -1,51 +1,78 @@
 import json
+from pathlib import Path
 from openai import OpenAI
+from dotenv import load_dotenv
+
+load_dotenv()
 
 client = OpenAI()
 
-def generate_web_search_samples(num_samples: int = 50) -> list:
+def generate_web_search_samples(num_samples: int = 10) -> list:
     """웹 검색 도구 호출 샘플 생성"""
     
     prompt = f"""
-헤어스타일 추천 챗봇의 학습 데이터를 생성해주세요.
+        헤어스타일 추천/정보/트렌드/관리/제품 추천 챗봇의 학습 데이터를 생성해주세요.
 
-[시나리오]
-사용자가 헤어스타일 트렌드, 유행, 최신 정보를 물어보는 경우입니다.
-이때 web_search_tool을 호출해야 합니다.
+        [시나리오]
+        사용자가 헤어스타일과 관련된 '정확한 정보', '팩트 기반 설명', 
+        '차이점·특징', '스타일 정의', '유명인 스타일', '제품·관리법 정보', 
+        '최신 트렌드' 등을 요구하는 경우입니다.
+        이러한 질문은 대부분 외부 정보 확인이 필요하므로 web_search_tool을 호출합니다.
 
-[web_search_tool 호출 조건]
-- "요즘", "최근", "유행", "트렌드", "인기" 등의 키워드가 포함된 질문
-- 특정 연예인/셀럽 헤어스타일 질문
-- 계절별 트렌드 질문
-- 특정 스타일의 유행 여부 질문
+        [web_search_tool 호출 조건]
+        아래 중 하나라도 해당되면 반드시 검색 도구를 호출해야 합니다.
+        - 최신/최근/요즘/유행/트렌드/인기 관련 질문
+        - 특정 헤어스타일의 정의, 특징, 차이점 요청  
+        - 특정 펌/염색/커트 명칭에 대한 정보 질문  
+        - 특정 유명인/셀럽 헤어스타일 질문
+        - 계절별 스타일/관리/추천 질문
+        - 헤어 관리 팁/관리 루틴/손상 케어 등 정보 요구
+        - 헤어 제품 추천, 제품 비교, 성능 정보 질문
+        - 가격대, 시술 명칭, 난이도, 유지기간 등 정보 확인
 
-[검색 쿼리 생성 규칙]
-- 항상 "2025"를 포함
-- 항상 "한국"을 포함
-- 핵심 키워드 포함 (남자/여자, 헤어스타일/염색/펌 등)
-- 자연스러운 검색어로 구성
+        즉, **사실성·정보 기반 답변이 필요한 질문은 모두 web_search_tool 호출 대상입니다.**
 
-[생성할 질문 유형]
-1. 일반 트렌드: "요즘 유행하는 머리 뭐야?"
-2. 성별 특정: "남자 헤어스타일 트렌드 알려줘"
-3. 스타일 특정: "숏컷 유행하는 스타일 있어?"
-4. 염색 트렌드: "요즘 인기있는 염색 색상 뭐야?"
-5. 계절 트렌드: "여름에 유행하는 머리 알려줘"
-6. 펌 트렌드: "요즘 남자 펌 뭐가 인기야?"
-7. 연예인 스타일: "아이유 헤어스타일 뭐야?" (이런 류)
-8. 비교 질문: "레이어드컷이랑 허쉬컷 중에 뭐가 더 유행해?"
+        [검색 쿼리 생성 규칙 — 일반화된 형태]
+        - 사용자의 질문 의도를 가장 잘 반영한 핵심 검색어 중심으로 구성
+        - 필요하다면 성별/스타일명/시술명/연예인 이름 등 맥락 키워드를 포함
+        - “한국”, “2025”, “최신”, “정보”, “비교”, “차이”, “관리법” 등은  
+        **질문을 더 정확하게 검색할 수 있을 경우에만 선택적으로 포함**
+        - 불필요하게 길지 않고 실제 검색 엔진에 입력할 법한 자연스러운 문구로 구성
+        - 완전한 문장일 필요 없음: 핵심 키워드 위주로 구성해도 됨
 
-다양한 말투로 {num_samples}개 생성해주세요.
+        예:  
+        - “레이어드컷 허쉬컷 차이”  
+        - “빌드펌 특징 한국”  
+        - “여름 머리 관리법 최신”  
+        - “카리나 헤어스타일 정보”  
+        - “헤어 오일 추천 손상모”
 
-[출력 형식]
-JSON 배열로 출력. 각 항목:
-{{
-  "user": "사용자 질의",
-  "query": "2025 ... 한국" (검색 쿼리)
-}}
+        [생성할 질문 유형 — 확장 버전]
+        1. 트렌드 질문  
+        2. 스타일 정의 질문  
+        3. 차이점 질문  
+        4. 성별 기반 스타일 정보  
+        5. 염색 정보·비교  
+        6. 펌 정보  
+        7. 계절별 스타일/관리  
+        8. 유명인 스타일 정보  
+        9. 제품 추천  
+        10. 제품 비교  
+        11. 관리 팁  
+        12. 가격/시술 정보  
+        13. 정보 확인형 질문  
 
-JSON 배열만 출력하고 다른 설명은 하지 마세요.
-"""
+        위 유형을 섞어서 다양한 말투로 {num_samples}개 생성해주세요.
+
+        [출력 형식]
+        JSON 배열로 출력. 각 항목:
+        {{
+        "user": "사용자 질의",
+        "query": "(검색 쿼리)"
+        }}
+
+        JSON 배열만 출력하고 다른 설명은 하지 마세요.
+        """
 
     response = client.chat.completions.create(
         model="gpt-4o",
@@ -53,7 +80,6 @@ JSON 배열만 출력하고 다른 설명은 하지 마세요.
         temperature=0.9,
     )
     
-    # JSON 파싱
     content = response.choices[0].message.content.strip()
     if content.startswith("```"):
         content = content.split("\n", 1)[1]
@@ -99,34 +125,33 @@ def convert_to_training_format(samples: list) -> list:
 
 def save_to_jsonl(data: list, filename: str):
     """JSONL 파일로 저장"""
+    output_path = Path(filename)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
     with open(filename, "w", encoding="utf-8") as f:
         for item in data:
             f.write(json.dumps(item, ensure_ascii=False) + "\n")
     print(f"저장 완료: {filename} ({len(data)}개 샘플)")
 
 
-def get_data(num_samples: int = 50, output_file: str = "web_search.jsonl"):
+def get_data(num_samples: int = 50, output_file: str = "finetuning/samples/qa_02_04.jsonl"):
     """메인 함수: 데이터 생성 → 변환 → 저장"""
     
     print(f"웹 검색 샘플 {num_samples}개 생성 중...")
     
-    # 1. GPT로 샘플 생성
     raw_samples = generate_web_search_samples(num_samples)
     print(f"생성 완료: {len(raw_samples)}개")
     
-    # 2. 학습 데이터 형식으로 변환
     training_data = convert_to_training_format(raw_samples)
     
-    # 3. JSONL 저장
     save_to_jsonl(training_data, output_file)
     
     return training_data
 
 
 if __name__ == "__main__":
-    data = get_data(num_samples=50, output_file="samples/web_search.jsonl")
+    data = get_data(num_samples=100, output_file="finetuning/samples/qa_02_04.jsonl")
     
-    # 확인용 출력
     print("\n=== 샘플 미리보기 ===")
     for i, sample in enumerate(data[:5]):
         user_msg = sample['messages'][1]['content']
