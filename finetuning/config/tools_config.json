@@ -1,0 +1,64 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "hairstyle_recommendation_tool",
+      "description": "사용자의 요청에 따라 어울리는 헤어스타일 또는 헤어컬러를 찾아서 알려줍니다.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "keywords": {"type": "string", "description": "사용자가 원하는 헤어스타일 관련 키워드"},
+          "season": {"type": "string", "description": "계절 (봄, 여름, 가을, 겨울)"},
+          "action": {"type": "string", "default": "analyze"}
+        },
+        "required": ["keywords"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "non_image_recommendation_tool",
+      "description": "이미지 없이 사용자 요청에 따라 어울리는 헤어스타일 또는 헤어컬러를 찾아서 알려줍니다.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "face_shape": {"type": "string", "enum": ["Round", "Square", "Heart", "Oval", "Oblong"]},
+          "gender": {"type": "string", "enum": ["Male", "Female"]},
+          "personal_color": {"type": "string"},
+          "season": {"type": "string"},
+          "hairstyle_keywords": {"type": "string"},
+          "haircolor_keywords": {"type": "string"}
+        }
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "hairstyle_generation_tool",
+      "description": "업로드된 이미지에 헤어스타일/헤어컬러를 합성합니다.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "hairstyle": {"type": "string"},
+          "haircolor": {"type": "string"}
+        }
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "web_search_tool",
+      "description": "요즘 유행하는 헤어스타일 등 트렌드 정보를 웹 검색합니다. 2025년 한국 기준.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {"type": "string"}
+        },
+        "required": ["query"]
+      }
+    }
+  }
+]
