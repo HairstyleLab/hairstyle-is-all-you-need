@@ -28,16 +28,77 @@ class QACache:
         for qa_doc in self.store_qa:
             if qa_doc.page_content == question:
                 return qa_doc
-        
+
         # 2. vectorstore에서 검색
         results = self.vectorstore.similarity_search_with_score(question, k=1)
-        
+
         if not results:
             return None
-        
+
         doc, distance = results[0]
         similarity = 1 / (1 + distance)
-        
+
+        if similarity >= self.similarity_threshold:
+            return doc
+        else:
+            return None
+
+    def get_answer_with_filter(self, query_text, rule_filters=None):
+        """
+        룰베이스 필터링 + 유사도 검색 조합
+
+        Args:
+            query_text: hairstyle_keywords와 haircolor_keywords를 조합한 텍스트
+            rule_filters: 정확히 일치해야 하는 필터 딕셔너리
+                         {'gender': '남성', 'face_shape': 'Oval', ...}
+
+        Returns:
+            캐시된 답변 문자열 또는 None
+        """
+        # 1. 먼저 store_qa(아직 flush 안 된 데이터)에서 확인
+        for qa_doc in self.store_qa:
+            # 룰베이스 필터링 체크
+            if rule_filters:
+                match = all(
+                    qa_doc.metadata.get(key) == value
+                    for key, value in rule_filters.items()
+                    if value is not None
+                )
+                if not match:
+                    continue
+
+            # 유사도 체크 (page_content가 query_text와 유사한지)
+            # 여기서는 정확히 일치하는지만 확인 (나중에 벡터스토어에서 유사도 검색)
+            if qa_doc.page_content == query_text:
+                return qa_doc
+
+        # 2. vectorstore에서 검색 (메타데이터 필터 적용)
+        if rule_filters:
+            # 메타데이터 필터를 vectorstore 검색에 적용
+            # None이 아닌 값만 필터에 포함
+            metadata_filter = {
+                key: value
+                for key, value in rule_filters.items()
+                if value is not None
+            }
+
+            if metadata_filter:
+                results = self.vectorstore.similarity_search_with_score(
+                    query_text,
+                    k=1,
+                    filter=metadata_filter
+                )
+            else:
+                results = self.vectorstore.similarity_search_with_score(query_text, k=1)
+        else:
+            results = self.vectorstore.similarity_search_with_score(query_text, k=1)
+
+        if not results:
+            return None
+
+        doc, distance = results[0]
+        similarity = 1 / (1 + distance)
+
         if similarity >= self.similarity_threshold:
             return doc
         else:
@@ -88,16 +149,30 @@ class QACache:
         
         return vector_store
     
-    def add_qa(self, question, answer):
-        
+    def add_qa(self, question, answer, metadata_dict=None):
+        """
+        QA 쌍 추가
+
+        Args:
+            question: 질문 텍스트 (hairstyle_keywords + haircolor_keywords)
+            answer: 답변 텍스트
+            metadata_dict: 룰베이스 필터링을 위한 메타데이터
+                          {'gender': '남성', 'face_shape': 'Oval', ...}
+        """
+        metadata = {
+            'answer': answer,
+            'timestamp': datetime.now().isoformat()
+        }
+
+        # 추가 메타데이터가 있으면 병합
+        if metadata_dict:
+            metadata.update(metadata_dict)
+
         qa = Document(
             page_content=question,
-            metadata={
-                'answer': answer,
-                'timestamp': datetime.now().isoformat()
-            }
+            metadata=metadata
         )
-        
+
         self.store_qa.append(qa)
         if len(self.store_qa) >= self.batch_size:
             self.flush()
@@ -129,25 +204,7 @@ class QACache:
         if self.store_qa:
             self.flush()
             
-# QA 캐시 초기화
-        self.qa_cache = self._init_qa_cache()
-        self.agent = self._build_agent()
-    
-    def _init_qa_cache(self):
-        try:
-            embeddings = OpenAIEmbeddings(model='text-embedding-3-small')
-            qa_cache = QACache(
-                json_path="rag/qa.json",
-                embeddings=embeddings,
-                vectorstore_path="rag/qa_vectorstore",
-                similarity_threshold=0.85,
-                batch_size=1
-            )
-            print("QA Cache 초기화 완료")
-            return qa_cache
-        except Exception as e:
-            print(f"QA Cache 초기화 실패: {e}")
-            return None
+
     
     
      

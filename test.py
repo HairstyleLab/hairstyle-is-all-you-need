@@ -138,10 +138,10 @@ print(make_human_message(q8, session_id="test_session2", file_path=file_path))
 # QA 캐시 테스트 (이미지 없이)
 # print("=== QA 캐시 테스트 시작 ===\n")
 
-# test_queries = [
-#     "여름에 사각형 얼굴의 여자가 하기 좋은 산뜻한 단발 추천해줘",
-#     "남자 계란 얼굴에 어울리는 시원한 헤어스타일 알려줘",
-# ]
+test_queries = [
+    "여름에 사각형 얼굴의 여자가 하기 좋은 상쾌한 단발 추천해줘",
+    "남자 계란 얼굴에 어울리는 고급진 헤어스타일 알려줘",
+]
 
 # for i, query in enumerate(test_queries, 1):
 #     print(f"\n[테스트 {i}] {query}")

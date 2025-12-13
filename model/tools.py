@@ -17,6 +17,7 @@ from rag.retrieval import load_retriever, rerank
 from model.utility.superresolution import get_high_resolution
 from model.utility.white_balance import grayworld_white_balance
 from model.utility.face_swap import face_swap
+from model.cache_manager import cache_manager
 
 reranker = load_reranker_model("Dongjin-kr/ko-reranker", "cuda")
 
@@ -36,6 +37,21 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
     
     if status_callback:
         status_callback("추천 헤어스타일 검색 중...")
+
+    # 캐시 조회
+    cached_answer = cache_manager.search_cache(
+        gender=gender,
+        face_shape=face_shape,
+        personal_color=personal_color,
+        season=season,
+        hairstyle_keywords=hairstyle_keywords,
+        haircolor_keywords=haircolor_keywords,
+        hairlength_keywords=hairlength_keywords
+    )
+
+    if cached_answer:
+        # 캐시 히트 - 바로 반환
+        return cached_answer
 
     scores = {'hair':[],'color':[]}
     results = {'hair':{},'color':{}}
@@ -205,6 +221,21 @@ def hairstyle_recommendation(model, image_base64, faceshape_keywords=None, gende
             face_shape = faceshape_keywords
             gender = gender_keywords
         
+
+        # 캐시 조회 - 이미지에서 추출한 정보를 포함
+        cached_answer = cache_manager.search_cache(
+            gender=gender,
+            face_shape=face_shape,
+            personal_color=personal_color,
+            season=season,
+            hairstyle_keywords=hairstyle_keywords,
+            haircolor_keywords=haircolor_keywords,
+            hairlength_keywords=hairlength_keywords
+        )
+
+        if cached_answer:
+            # 캐시 히트 - 바로 반환
+            return cached_answer
 
         with open("config/hairstyle_list.json", "r", encoding="utf-8") as f:
             hairstyle_data = json.load(f)
