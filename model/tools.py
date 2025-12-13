@@ -17,6 +17,7 @@ from rag.retrieval import load_retriever
 from model.utility.superresolution import get_high_resolution
 from model.utility.white_balance import grayworld_white_balance
 from model.utility.face_swap import face_swap
+from model.cache_manager import cache_manager
 
 
 def skin_tone_choice(result):
@@ -31,10 +32,25 @@ def skin_tone_choice(result):
       
 
 def non_image_recommendation(face_shape=None, gender=None, personal_color=None, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None, status_callback=None):
-    
-    
+
+
     if status_callback:
         status_callback("추천 헤어스타일 검색 중...")
+
+    # 캐시 조회
+    cached_answer = cache_manager.search_cache(
+        gender=gender,
+        face_shape=face_shape,
+        personal_color=personal_color,
+        season=season,
+        hairstyle_keywords=hairstyle_keywords,
+        haircolor_keywords=haircolor_keywords,
+        hairlength_keywords=hairlength_keywords
+    )
+
+    if cached_answer:
+        # 캐시 히트 - 바로 반환
+        return cached_answer
 
     scores = {'hair':[],'color':[]}
     results = {'hair':{},'color':{}}
@@ -49,7 +65,7 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
         hairstyle_length = json.load(f)
 
     embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cuda")    
-    _, vectorstore = load_retriever("rag/db/styles_added_hf", embeddings)
+    _, vectorstore = load_retriever("rag/db/new_hf_1211", embeddings)
 
     # 성별& 얼굴형 있으면
     if gender is not None and face_shape is not None :
@@ -168,8 +184,8 @@ def non_image_recommendation(face_shape=None, gender=None, personal_color=None, 
 
 
 def hairstyle_recommendation(model, image_base64, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None, status_callback=None):
-    
-    
+
+
     if status_callback:
         status_callback("추천 헤어스타일 검색 중...")
 
@@ -192,6 +208,21 @@ def hairstyle_recommendation(model, image_base64, season=None, hairstyle_keyword
         skin_tone = skin_tone_choice(result)
         personal_color = classify_personal_color(skin_tone)
         face_shape, gender = get_face_shape_and_gender(model, temp_path)
+
+        # 캐시 조회 - 이미지에서 추출한 정보를 포함
+        cached_answer = cache_manager.search_cache(
+            gender=gender,
+            face_shape=face_shape,
+            personal_color=personal_color,
+            season=season,
+            hairstyle_keywords=hairstyle_keywords,
+            haircolor_keywords=haircolor_keywords,
+            hairlength_keywords=hairlength_keywords
+        )
+
+        if cached_answer:
+            # 캐시 히트 - 바로 반환
+            return cached_answer
 
         with open("config/hairstyle_list.json", "r", encoding="utf-8") as f:
             hairstyle_data = json.load(f)
@@ -221,7 +252,7 @@ def hairstyle_recommendation(model, image_base64, season=None, hairstyle_keyword
         color_max_score, color_min_score = -inf, inf
         
         embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cuda")
-        _, vectorstore = load_retriever("rag/db/styles_added_hf", embeddings=embeddings)        
+        _, vectorstore = load_retriever("rag/db/new_hf_1211", embeddings=embeddings)        
         
         if season is not None:
             seasonal_hairstyle_list = hairstyle_data['계절'][gender+season]
@@ -440,7 +471,7 @@ def web_search(query: str)->str:
 
 def rag_search(face_shape: str|None=None, season: str|None=None, tone: str|None=None):
     embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cpu")
-    retriever, _ = load_retriever("rag/db/styles_added_hf", embeddings=embeddings, k=10)
+    retriever, _ = load_retriever("rag/db/new_hf_1211", embeddings=embeddings, k=10)
 
     res = []
     if face_shape:
