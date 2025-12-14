@@ -51,7 +51,7 @@
     "type": "function",
     "function": {
       "name": "web_search_tool",
-      "description": "요즘 유행하는 헤어스타일 등 트렌드 정보를 웹 검색합니다. 2025년 한국 기준.",
+      "description": "요즘 유행하는 헤어스타일 등의 트렌드나 헤어스타일과 관련된 다양한 정보를 웹 검색합니다. 2025년 한국 기준.",
       "parameters": {
         "type": "object",
         "properties": {

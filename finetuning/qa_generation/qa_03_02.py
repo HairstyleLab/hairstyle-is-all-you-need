@@ -3,34 +3,13 @@ import base64
 import random
 from pathlib import Path
 from openai import OpenAI
+from dotenv import load_dotenv
 
+load_dotenv()
 client = OpenAI()
 
 
-def load_images_as_base64(image_folder: str) -> list:
-    """이미지 폴더에서 모든 이미지를 base64로 로드"""
-    
-    image_folder = Path(image_folder)
-    image_extensions = {".jpg", ".jpeg", ".png", ".webp"}
-    
-    images = []
-    for img_path in image_folder.iterdir():
-        if img_path.suffix.lower() in image_extensions:
-            with open(img_path, "rb") as f:
-                img_base64 = base64.b64encode(f.read()).decode("utf-8")
-            
-            mime_type = "image/jpeg" if img_path.suffix.lower() in {".jpg", ".jpeg"} else f"image/{img_path.suffix[1:].lower()}"
-            
-            images.append({
-                "filename": img_path.name,
-                "base64": f"data:{mime_type};base64,{img_base64}"
-            })
-    
-    print(f"로드된 이미지: {len(images)}개 ({image_folder})")
-    return images
-
-
-def generate_image_recommendation_exception_queries(num_samples: int = 50) -> list:
+def generate_image_recommendation_exception_queries(num_samples: int = 10) -> list:
     """이미지 있는 추천 예외처리 질의 생성"""
     
     prompt = f"""
@@ -48,21 +27,51 @@ def generate_image_recommendation_exception_queries(num_samples: int = 50) -> li
 2. 얼굴 2명 이상 이미지 (단체사진, 커플사진 등)
    → 응답: "이 이미지에는 2명 이상의 얼굴이 포함되어 있습니다🥲 한 명만 나온 이미지를 업로드해주세요."
 
+[중요: 질의 복잡도 분포]
+- 단순 질의 (30%): "이 사진으로 헤어 추천해줘", "어떤 머리가 어울려?"
+- 중간 복잡도 (40%): 상황/맥락 포함, 조건 1-2개
+- 복잡한 질의 (30%): 여러 조건, 상세한 맥락, 긴 문장
+
+
+[복잡한 질의 예시 - 반드시 이런 스타일 포함]
+- "이제 여름이 되기도 했고 시원하고 쾌적해보이는 머리스타일을 하고싶은데 어떤게 좋을까? 그러면서도 내 얼굴에 어울리는 헤어스타일이면 좋겠고 색은 톤다운된 컬러로 너무 튀지는 않았으면 좋겠어"
+- "다음주에 면접이 있어서 깔끔하면서도 너무 딱딱해보이지 않는 스타일을 찾고있어. 직장인으로서 무난하면서도 세련된 느낌이었으면 좋겠는데 내 얼굴형에는 뭐가 맞을까?"
+- "요즘 머리가 너무 상해서 펌은 하고싶은데 손상이 덜한 걸로 하고싶거든? 근데 또 볼륨은 있었으면 좋겠고... 내 얼굴이랑 매치되는 스타일 좀 추천해줄 수 있어?"
+- "결혼식 하객으로 가야하는데 너무 화려하지도 않고 그렇다고 너무 평범하지도 않은 헤어스타일 있을까? 드레스코드가 세미포멀이라 그거에 맞게 우아한 느낌으로 하고싶어"
+- "저 곱슬머리라서 항상 머리가 부스스한데 이런 모발에도 잘 어울리면서 관리하기 쉬운 스타일이 뭐가 있을까요? 아침에 손질 시간 많이 못 쓰거든요"
+
+[맥락/상황 키워드 - 적극 활용]
+- 계절: 여름이라 시원하게, 겨울이라 따뜻해보이게, 환절기라, 봄맞이로
+- 이벤트: 면접, 소개팅, 결혼식, 졸업식, 입학식, 여행, 데이트, 동창회, 회사워크샵
+- 고민: 머리가 상해서, 탈모가 있어서, 얼굴이 커서, 이마가 넓어서, 광대가 나와서
+- 조건: 관리가 쉬운, 손질 안해도 되는, 오래 유지되는, 자연스러운, 세련된
+- 직업/상황: 직장인이라, 학생이라, 취준생이라, 아이 엄마라, 운동을 많이 해서
+- 스타일: 청순한, 시크한, 귀여운, 성숙한, 지적인, 편안한, 단정한, 트렌디한
+- 복합 조건: A하면서도 B한, A인데 B는 싫고, A랑 B 둘 다 가능한
+
+[질의에 포함될 수 있는 요청 유형]
+- 스타일 추천: "어떤 머리가 어울려?", "뭐가 좋을까?"
+- 컬러 추천: "어떤 색이 맞을까?", "염색은 뭐로?"
+- 종합 추천: "스타일이랑 색 둘 다", "전체적으로 바꾸고 싶어"
+- 조언 요청: "어떻게 하면 좋을지", "고민인데 도와줘"
+
+[다양한 말투]
+- 반말 친근체: "~해줘", "~할까?", "~좋겠어", "~싶거든"
+- 존댓말: "~해주세요", "~할까요?", "~좋겠습니다"
+- 이모지 사용: 😊, 🤔, ㅠㅠ, ㅎㅎ, ~!, ...
+- 구어체: "근데", "그냥", "좀", "막", "되게", "엄청"
+
 [생성 규칙]
 각 케이스별로 다양한 질의를 생성해주세요:
 - 케이스1 (얼굴 없음): {num_samples // 2}개
 - 케이스2 (2명 이상): {num_samples // 2}개
 
-다양한 표현 사용:
-- "이 사진으로", "내 사진에", "이 얼굴에", "이 이미지로"
-- "추천해줘", "알려줘", "뭐가 어울려?", "어떤 게 좋아?"
-- 반말, 존댓말, 이모지 등
-
 [출력 형식]
 JSON 배열로 출력. 각 항목:
 {{
   "type": "no_face" | "multi_face",
-  "user": "사용자 질의"
+  "user": "사용자 질의",
+  "complexity": "simple" | "medium" | "complex"
 }}
 
 JSON 배열만 출력하고 다른 설명은 하지 마세요.
@@ -74,7 +83,6 @@ JSON 배열만 출력하고 다른 설명은 하지 마세요.
         temperature=0.9,
     )
     
-    # JSON 파싱
     content = response.choices[0].message.content.strip()
     if content.startswith("```"):
         content = content.split("\n", 1)[1]
@@ -85,29 +93,18 @@ JSON 배열만 출력하고 다른 설명은 하지 마세요.
     return samples
 
 
-# 고정 응답 매핑
-RESPONSE_MAP = {
+EXCEPTION_RESPONSES = {
     "no_face": "얼굴이 포함된 이미지를 첨부하셔야 헤어스타일 추천이 가능합니다🥲 확인 후 다른 사진을 업로드해주세요.",
     "multi_face": "이 이미지에는 2명 이상의 얼굴이 포함되어 있습니다🥲 한 명만 나온 이미지를 업로드해주세요."
 }
 
 
-def convert_to_training_format(samples: list, no_face_images: list, multi_face_images: list) -> list:
-    """생성된 샘플을 학습 데이터 형식으로 변환"""
-    
+def convert_to_training_format(samples: list) -> list:
     training_data = []
     
-    for sample in samples:
-        sample_type = sample["type"]
+    for i, sample in enumerate(samples):
         
-        # 타입에 따라 이미지 선택
-        if sample_type == "no_face":
-            selected_image = random.choice(no_face_images)
-        else:  # multi_face
-            selected_image = random.choice(multi_face_images)
-        
-        # 고정 응답 사용
-        response = RESPONSE_MAP[sample_type]
+        response_text = EXCEPTION_RESPONSES[sample["type"]]
         
         training_sample = {
             "messages": [
@@ -116,12 +113,17 @@ def convert_to_training_format(samples: list, no_face_images: list, multi_face_i
                     "role": "user",
                     "content": [
                         {"type": "text", "text": sample["user"]},
-                        {"type": "image_url", "image_url": {"url": selected_image["base64"]}}
+                        {"type": "image_url", "image_url": {"url": ""}}
                     ]
                 },
-                {"role": "assistant", "content": response}
-            ]
+                {
+                    "role": "assistant",
+                    "content": response_text
+                }
+            ],
+            "image_type": sample["type"]
         }
+        
         training_data.append(training_sample)
     
     return training_data
@@ -129,115 +131,123 @@ def convert_to_training_format(samples: list, no_face_images: list, multi_face_i
 
 def save_to_jsonl(data: list, filename: str):
     """JSONL 파일로 저장"""
-    with open(filename, "w", encoding="utf-8") as f:
+    output_path = Path(filename)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    with open(output_path, "w", encoding="utf-8") as f:
         for item in data:
             f.write(json.dumps(item, ensure_ascii=False) + "\n")
     print(f"저장 완료: {filename} ({len(data)}개 샘플)")
 
 
+def analyze_samples(samples: list):
+    """생성된 샘플 분석"""
+    
+    type_counts = {"no_face": 0, "multi_face": 0}
+    complexity_counts = {"simple": 0, "medium": 0, "complex": 0}
+    
+    for sample in samples:
+        type_counts[sample["type"]] += 1
+        complexity_counts[sample.get("complexity", "medium")] += 1
+    
+    total = len(samples)
+    print("\n=== 샘플 분석 ===")
+    print(f"총 샘플 수: {total}개")
+    
+    print("\n[예외 타입 분포]")
+    for key, count in type_counts.items():
+        pct = (count / total * 100) if total > 0 else 0
+        print(f"  {key}: {count}개 ({pct:.1f}%)")
+    
+    print("\n[복잡도 분포]")
+    for key, count in complexity_counts.items():
+        pct = (count / total * 100) if total > 0 else 0
+        print(f"  {key}: {count}개 ({pct:.1f}%)")
+    
+    # 길이 분석
+    lengths = [len(s["user"]) for s in samples]
+    print(f"\n[질의 길이]")
+    print(f"  최소: {min(lengths)}자")
+    print(f"  최대: {max(lengths)}자")
+    print(f"  평균: {sum(lengths)/len(lengths):.1f}자")
+
+
 def get_data(
-    no_face_folder: str = "images/no_face",
-    multi_face_folder: str = "images/multi_face",
-    num_samples: int = 50,
-    output_file: str = "image_recommendation_exception.jsonl"
+    num_samples: int = 10,
+    output_file: str = "finetuning/samples/qa_03_02.jsonl"
 ):
-    """메인 함수: 이미지 로드 → 데이터 생성 → 변환 → 저장"""
-    
-    # 1. 이미지 로드
-    print("이미지 로드 중...")
-    no_face_images = load_images_as_base64(no_face_folder)
-    multi_face_images = load_images_as_base64(multi_face_folder)
-    
-    if not no_face_images:
-        raise ValueError(f"얼굴 없는 이미지가 없습니다: {no_face_folder}")
-    if not multi_face_images:
-        raise ValueError(f"다중 얼굴 이미지가 없습니다: {multi_face_folder}")
-    
-    # 2. GPT로 질의 생성
-    print(f"이미지 추천 예외처리 샘플 {num_samples}개 생성 중...")
-    raw_samples = generate_image_recommendation_exception_queries(num_samples)
-    print(f"생성 완료: {len(raw_samples)}개")
-    
-    # 타입별 개수 확인
-    type_counts = {}
-    for sample in raw_samples:
-        t = sample["type"]
-        type_counts[t] = type_counts.get(t, 0) + 1
-    print(f"타입별 분포: {type_counts}")
-    
-    # 3. 학습 데이터 형식으로 변환
-    training_data = convert_to_training_format(raw_samples, no_face_images, multi_face_images)
-    
-    # 4. JSONL 저장
+    """메인 함수: 텍스트 질의-응답 생성 (이미지는 build_dataset.py에서 매칭)"""
+
+    print(f"예외처리 샘플 {num_samples}개 생성 중...")
+    samples = generate_image_recommendation_exception_queries(num_samples)
+    print(f"생성 완료: {len(samples)}개")
+
+    analyze_samples(samples)
+
+    training_data = convert_to_training_format(samples)
+
     save_to_jsonl(training_data, output_file)
-    
-    return training_data
+
+    return training_data, samples
 
 
 if __name__ == "__main__":
-    data = get_data(
-        no_face_folder="images/no_face",        # 풍경, 음식, 동물 등
-        multi_face_folder="images/multi_face",  # 단체사진, 커플사진 등
-        num_samples=50,
-        output_file="samples/image_recommendation_exception.jsonl"
+    training_data, raw_samples = get_data(
+        num_samples=100,
+        output_file="finetuning/samples/qa_03_02.jsonl"
     )
     
-    # 확인용 출력
-    print("\n=== 샘플 미리보기 ===")
-    for i, sample in enumerate(data[:4]):
-        user_content = sample['messages'][1]['content']
-        text = user_content[0]['text']
-        img_preview = user_content[1]['image_url']['url'][:50] + "..."
-        assistant_msg = sample['messages'][2]['content']
-        
-        print(f"\n[{i+1}] User: {text}")
-        print(f"    Image: {img_preview}")
-        print(f"    Assistant: {assistant_msg[:40]}...")
+    print("\n=== 복잡도별 샘플 미리보기 ===")
+    
+    for complexity in ["simple", "medium", "complex"]:
+        filtered = [s for s in raw_samples if s.get("complexity") == complexity]
+        print(f"\n[{complexity.upper()}]")
+        for sample in filtered[:3]:
+            print(f"  - [{sample['type']}] {sample['user'][:80]}{'...' if len(sample['user']) > 80 else ''}")
 
-## 폴더 구조
+
 """
-project/
-├── images/
-│   ├── normal_faces/    # 정상 얼굴 1명 (툴 호출용)
-│   ├── no_face/         # 얼굴 없는 이미지 (풍경, 음식, 동물 등)
-│   │   ├── landscape1.jpg
-│   │   ├── food1.jpg
-│   │   ├── animal1.jpg
-│   │   └── ...
-│   └── multi_face/      # 얼굴 2명 이상 (단체사진, 커플 등)
-│       ├── group1.jpg
-│       ├── couple1.jpg
-│       └── ...
-├── samples/
-│   └── image_recommendation_exception.jsonl
-└── generate_image_rec_exception.py
+얼굴 없는 이미지 로드 중: images/no_face
+로드된 이미지: 5개
+다중 얼굴 이미지 로드 중: images/multi_face
+로드된 이미지: 5개
 
+예외처리 샘플 60개 생성 중...
+생성 완료: 60개
 
-## 실행 결과 예시
+=== 샘플 분석 ===
+총 샘플 수: 60개
 
-이미지 로드 중...
-로드된 이미지: 10개 (images/no_face)
-로드된 이미지: 8개 (images/multi_face)
-이미지 추천 예외처리 샘플 50개 생성 중...
-생성 완료: 50개
-타입별 분포: {'no_face': 25, 'multi_face': 25}
-저장 완료: samples/image_recommendation_exception.jsonl (50개 샘플)
+[예외 타입 분포]
+  no_face: 30개 (50.0%)
+  multi_face: 30개 (50.0%)
 
-=== 샘플 미리보기 ===
+[복잡도 분포]
+  simple: 18개 (30.0%)
+  medium: 24개 (40.0%)
+  complex: 18개 (30.0%)
 
-[1] User: 이 사진으로 어울리는 헤어스타일 추천해줘
-    Image: data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQAB...
-    Assistant: 얼굴이 포함된 이미지를 첨부하셔야 헤어스타일 추천이...
+[질의 길이]
+  최소: 15자
+  최대: 156자
+  평균: 62.3자
 
-[2] User: 내 사진에 맞는 머리 추천해줘~
-    Image: data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQAB...
-    Assistant: 얼굴이 포함된 이미지를 첨부하셔야 헤어스타일 추천이...
+저장 완료: samples/exception_handling.jsonl (60개 샘플)
 
-[3] User: 이 사진으로 헤어스타일 추천해주세요
-    Image: data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQAB...
-    Assistant: 이 이미지에는 2명 이상의 얼굴이 포함되어 있습니다🥲...
+=== 복잡도별 샘플 미리보기 ===
 
-[4] User: 나한테 어울리는 머리 뭐야?
-    Image: data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQAB...
-    Assistant: 이 이미지에는 2명 이상의 얼굴이 포함되어 있습니다🥲...
+[SIMPLE]
+  - [no_face] 이 사진으로 어떤 헤어가 어울릴까?
+  - [multi_face] 머리 스타일 추천해주세요
+  - [no_face] 나한테 맞는 헤어 뭐야?
+
+[MEDIUM]
+  - [multi_face] 다음주 소개팅인데 깔끔하면서 호감가는 스타일로 추천해줘
+  - [no_face] 여름이라 시원해보이는 헤어스타일 하고싶은데 뭐가 좋을까요?
+  - [multi_face] 직장인인데 너무 튀지않으면서 세련된 머리 추천해줄 수 있어?
+
+[COMPLEX]
+  - [no_face] 이제 여름이 되기도 했고 시원하고 쾌적해보이는 머리스타일을 하고싶은데 어떤게 ...
+  - [multi_face] 다음주에 면접이 있어서 깔끔하면서도 너무 딱딱해보이지 않는 스타일을 찾고있어...
+  - [no_face] 저 곱슬머리라서 항상 머리가 부스스한데 이런 모발에도 잘 어울리면서 관리하기 쉬...
 """
