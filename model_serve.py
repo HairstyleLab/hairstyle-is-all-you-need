@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI):
     # 2. 임베딩 모델 및 벡터스토어 로드
     print("\n[2/6] 임베딩 모델 및 벡터스토어 로드 중...")
     embeddings = load_embedding_model("dragonkue/snowflake-arctic-embed-l-v2.0-ko", device="cuda")
-    _, vectorstore = load_retriever("rag/db/styles_added_hf", embeddings)
+    _, vectorstore = load_retriever("rag/db/new_hf_1211", embeddings)
 
     # 3. SAFMN 초해상도 모델 로드
     print("\n[3/6] SAFMN 초해상도 모델 로드 중...")

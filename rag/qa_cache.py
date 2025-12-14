@@ -6,6 +6,7 @@ from langchain_core.documents import Document
 from langchain_community.vectorstores import FAISS
 from langchain_community.docstore.in_memory import InMemoryDocstore
 import json
+from langchain_openai import OpenAIEmbeddings
 
 load_dotenv()
 

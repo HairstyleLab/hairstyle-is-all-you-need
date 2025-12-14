@@ -392,8 +392,13 @@ class HairstyleAgent:
 
         # 캐시 히트였으면 캐시된 답변 사용
         if cache_manager.was_last_cache_hit():
-            print("[CACHE HIT] 캐시된 최종 답변 사용 - invoke 스킵")
-            # 이미 툴에서 캐시된 답변을 반환했으므로 추가 작업 없음
+                    # 캐시에서 최종 답변을 다시 가져와서 result에 설정
+                    last_params = cache_manager.get_last_tool_params()
+                    if last_params:
+                        cached_final_answer = cache_manager.search_cache(**last_params)
+                        if cached_final_answer:
+                            result = {'output': cached_final_answer}
+                            print("[CACHE HIT] 캐시된 최종 답변으로 result 설정 완료") 
 
         # 최종 답변을 캐시에 저장 (툴이 실행되었고 캐시 히트가 아닌 경우)
         else:
