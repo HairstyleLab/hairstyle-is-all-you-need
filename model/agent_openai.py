@@ -249,6 +249,7 @@ class HairstyleAgent:
         self.models_3d = models_3d
         self.last_inputs = None
         self.current_image_base64 = None  # 인스턴스별 이미지 저장
+        self.current_3d_ply_path = None   # 3D .ply 파일 경로 저장
         self.gen_flag = False             # 이미지 생성했는지 여부
         self.status_callback = None
 
@@ -305,11 +306,12 @@ class HairstyleAgent:
                 models_3d=self.models_3d
             )
 
-            # 튜플 반환: (result_text, image_bytes) - 정상 생성
+            # 튜플 반환: (result_text, image_bytes, ply_path) - 정상 생성
             # 문자열 반환: 오류 메시지 (예: 다수 얼굴 감지)
             if isinstance(res, tuple):
                 self.gen_flag = True
                 self.current_image_base64 = base64.b64encode(res[1]).decode('utf-8')
+                self.current_3d_ply_path = res[2] if len(res) > 2 else None
                 return res[0]
             else:
                 # 문자열 오류 메시지 반환

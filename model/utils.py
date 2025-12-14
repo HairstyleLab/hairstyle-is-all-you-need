@@ -146,7 +146,7 @@ def get_3d(
     guidance_scale_2D: float = 3.0,
     step_2D: int = 50,
     models_3d: dict = None
-) -> None:
+) -> str:
     """
     Generate 3D reconstruction from image
 
@@ -159,6 +159,9 @@ def get_3d(
         guidance_scale_2D: Guidance scale for 2D generation
         step_2D: Steps for 2D generation
         models_3d: Pre-loaded 3D models dict (if None, will load on-the-fly)
+
+    Returns:
+        Path to the generated .ply file
     """
     # If models are not provided, load them (backward compatibility)
     if models_3d is None:
@@ -204,6 +207,12 @@ def get_3d(
         step_2D,
         face_detector
     )
+
+    # Generate the expected .ply file path
+    image_name = image_file.split(".")[0]
+    ply_path = os.path.join(output_dir, image_name, "gaussians.ply")
+
+    return ply_path
 
 def face_crop(image_file, crop_size=256, face_cropper=None):
     """

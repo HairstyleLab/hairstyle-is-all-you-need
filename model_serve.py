@@ -88,6 +88,7 @@ class QueryRequest(BaseModel):
 class QueryResponse(BaseModel):
     output: str
     generated_image: str | None = None  # 생성된 이미지 (base64)
+    generated_3d_model: str | None = None  # 생성된 3D 모델 .ply 파일 (base64)
 
 # SSE 스트리밍 엔드포인트
 @app.post("/query/stream")
@@ -141,11 +142,26 @@ async def query_stream(request: QueryRequest):
                     generated_image = f"data:image/jpeg;base64,{agent.current_image_base64}"
                     agent.gen_flag = False
 
+                # 생성된 3D 모델(.ply) 확인
+                generated_3d_model = None
+                if hasattr(agent, 'current_3d_ply_path') and agent.current_3d_ply_path:
+                    try:
+                        import os
+                        if os.path.exists(agent.current_3d_ply_path):
+                            with open(agent.current_3d_ply_path, 'rb') as f:
+                                ply_bytes = f.read()
+                                ply_base64 = base64.b64encode(ply_bytes).decode('utf-8')
+                                generated_3d_model = f"data:model/ply;base64,{ply_base64}"
+                            agent.current_3d_ply_path = None
+                    except Exception as e:
+                        print(f"3D 모델 파일 읽기 실패: {e}")
+
                 # 최종 응답 전송
                 queue.put({
                     "type": "response",
                     "output": response["output"],
-                    "generated_image": generated_image
+                    "generated_image": generated_image,
+                    "generated_3d_model": generated_3d_model
                 })
 
             except Exception as e:
@@ -191,7 +207,7 @@ async def query_llm(request: QueryRequest):
             # 혹시 파일 경로가 전달된 경우 (레거시 지원)
             encoded_image = encode_image_from_file(request.image_path)
             print(f"파일에서 이미지 인코딩 완료: {request.image_path}")
-
+    
         message = HumanMessage(content=[
             {"type": "text", "text": request.query},
             {"type": "image_url", "image_url": {"url": encoded_image}}
@@ -215,7 +231,24 @@ async def query_llm(request: QueryRequest):
         # 플래그 리셋
         agent.gen_flag = False
 
+    # 생성된 3D 모델(.ply)이 있는지 확인
+    generated_3d_model = None
+    if hasattr(agent, 'current_3d_ply_path') and agent.current_3d_ply_path:
+        try:
+            import os
+            if os.path.exists(agent.current_3d_ply_path):
+                with open(agent.current_3d_ply_path, 'rb') as f:
+                    ply_bytes = f.read()
+                    ply_base64 = base64.b64encode(ply_bytes).decode('utf-8')
+                    generated_3d_model = f"data:model/ply;base64,{ply_base64}"
+                    print(f"생성된 3D 모델을 응답에 포함 (경로: {agent.current_3d_ply_path}, 크기: {len(ply_base64)} bytes)")
+                # 경로 리셋
+                agent.current_3d_ply_path = None
+        except Exception as e:
+            print(f"3D 모델 파일 읽기 실패: {e}")
+
     return QueryResponse(
         output=response["output"],
-        generated_image=generated_image
+        generated_image=generated_image,
+        generated_3d_model=generated_3d_model
     )
