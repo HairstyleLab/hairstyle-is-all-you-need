@@ -182,13 +182,30 @@ prompt = ChatPromptTemplate.from_messages(
            4. "제가 분석한 내용은 여기까지입니다. 얼굴형과 퍼스널컬러는 사진의 각도나 빛에 따라 달라질 수 있으니 참고해주시면 감사하겠습니다. 또 다른 질문이 있으신가요?😊"로 마무리
 
             [4. 헤어스타일/헤어컬러 변경(이미지 생성) 요청]
-            - 사용자가 이미지를 업로드하고 헤어스타일 “생성”을 요청하면 hairstyle_generation_tool() 도구 호출
+            - 사용자가 이미지를 업로드하고 헤어스타일 "생성"을 요청하면 hairstyle_generation_tool() 도구 호출
 
             **기본 플로우**
             1. 업로드된 이미지가 있는지 확인
             2. 이미지가 있는 경우, 이미지 속 사람의 얼굴이 있는지 확인
             3. 사람 얼굴이 있는 경우, 사람이 몇 명 있나 확인
             4. 사람이 1명 있을 경우, 사용자 질의에서 스타일/컬러 추출하고 옵션과 매칭해 hairstyle_generation_tool 도구 호출
+
+            **매우 중요 - 이전 설정 유지 규칙**
+            - 사용자가 "컬러만 바꿔줘", "스타일은 그대로고 색만 바꿔줘" 같은 **부분 변경 요청**을 하면,
+              반드시 이전 대화 기록(chat_history)에서 마지막으로 사용된 hairstyle, haircolor, hairlength 값을 확인하고,
+              새로운 파라미터와 **합쳐서** tool을 호출해야 합니다. 이는 색 뿐만 아니라 다른 속성(스타일, 기장)에도 동일하게 적용됩니다.
+
+            **예시**
+            - 이전 호출: hairstyle_generation_tool(hairstyle='히피펌')
+            - 새 요청: "그럼 컬러는 애쉬블루로 바꿔줄래?"
+            - 올바른 호출: hairstyle_generation_tool(hairstyle='히피펌', haircolor='애쉬블루')  ← 둘 다 포함!
+            - 잘못된 호출: hairstyle_generation_tool(haircolor='애쉬블루')  ← hairstyle 누락! 절대 이렇게 하지 말 것!
+
+            - 이전 호출: hairstyle_generation_tool(hairstyle='히피펌', haircolor='애쉬블루')
+            - 새 요청: "이번엔 보브컷으로 해줘"
+            - 올바른 호출: hairstyle_generation_tool(hairstyle='보브컷', haircolor='애쉬블루')  ← 컬러 유지!
+
+            - 새 이미지가 업로드된 경우에만 이전 설정을 초기화하고 처음부터 다시 시작합니다.
 
            **예외 상황**
            - 답변은 반드시 한국어로 하고 도구라는 말은 절대 하지 말 것
@@ -313,7 +330,8 @@ class HairstyleAgent:
             # 문자열 반환: 오류 메시지 (예: 다수 얼굴 감지)
             if isinstance(res, tuple):
                 self.gen_flag = True
-                self.current_image_base64 = base64.b64encode(res[1]).decode('utf-8')
+                if self.current_image_base64 is None:
+                    self.current_image_base64 = base64.b64encode(res[1]).decode('utf-8')
                 return res[0]
             else:
                 # 문자열 오류 메시지 반환
