@@ -7,6 +7,7 @@ from langchain_classic.agents import AgentExecutor,create_openai_tools_agent
 from model.model_load import load_openai
 from model.tools import hairstyle_recommendation, hairstyle_generation, get_tool_list, non_image_recommendation, hairstyle_recommendation_nano
 from langchain_community.tools import DuckDuckGoSearchRun
+from duckduckgo_search import DDGS
 from model.cache_manager import cache_manager
 import base64
 from .system_prompt import sys_prompt
@@ -195,7 +196,10 @@ prompt = ChatPromptTemplate.from_messages(
            (2) 이미지에 사람 얼굴이 없는 경우, "얼굴이 포함된 이미지를 첨부하셔야 이미지를 만들 수 있습니다🥲 확인 후 다른 사진을 업로드해주세요."로 마무리
            (3) 이미지에 사람이 여러명이 있는 경우, "이 이미지에는 2 명 이상의 얼굴이 포함되어 있습니다🥲 한 명만 나온 이미지를 업로드 해주세요."로 마무리         
            (4) 스타일이나 컬러가 지원되는 스타일/컬러 목록에 없는 경우, "죄송합니다🥲 요청하신 헤어스타일/컬러는 현재 지원되지 않습니다. 아래 옵션 목록에서 선택해 다시 시도해주세요."라고 응답 후 지원가능한 옵션 목록을 제시하며 마무리
-
+           (5) 사람이 1명 있더라도 측면만 보이거나 얼굴이 정면으로 나오지 않은 경우, "얼굴이 정면으로 나온 이미지를 첨부하셔야 이미지를 만들 수 있습니다🥲 확인 후 다른 사진을 업로드해주세요."라고 응답 후 마무리
+           (6) 사용자가 직접 이 이미지를 참고해서 이미지를 생성해달라고 하는 경우, "죄송합니다🥲 현재는 업로드된 이미지를 참고하여 스타일링을 적용하는 기능은 지원되지 않습니다. 아래 옵션 목록에서 선택해 다시 시도해주세요."라고 응답 후 지원가능한 옵션 목록을 제시하며 마무리
+           (7) 이 이미지에 있는 헤어스타일이 무엇인지 알려달라고 하는 경우, "죄송하지만 해당 기능은 아직 개발중이라 지금은 지원되지 않습니다🥲 얼른 배워서 답변드릴게요..!또 다른 질문 있으신가요?"라고 응답 후 마무리
+           
            **유의사항**
            - 답변은 반드시 한국어로 하고 도구라는 말은 절대 하지 말 것
            - 사용자 질의에 아래 목록에 있는 헤어스타일/컬러가 있는 경우, 해당 헤어스타일/컬러 추출해 도구에 전달 
@@ -324,9 +328,26 @@ class HairstyleAgent:
             """
             # return web_search(query)
 
+            ddgs = DDGS()
+
+            # 텍스트 검색 결과
             search = DuckDuckGoSearchRun()
-            res = search.run(query)
-            return res
+            text_result = search.run(query)
+
+            result_text = text_result
+
+            try:
+                image_results = list(ddgs.images(query + " 헤어스타일", max_results=3))
+                if image_results:
+                    result_text += "\n\n**참고 이미지**\n\n"
+                    for img in image_results:
+                        # 마크다운 이미지 형식으로 변환 (프론트에서 HTML로 렌더링 되도록)
+                        result_text += f"![{img['title']}]({img['image']})\n"
+                        result_text += f"*출처: [{img['url']}]({img['url']})*\n\n"
+            except Exception:
+                pass
+
+            return result_text
 
         
         tools = get_tool_list(hairstyle_recommendation_tool,non_image_recommendation_tool, hairstyle_generation_tool, web_search_tool)
