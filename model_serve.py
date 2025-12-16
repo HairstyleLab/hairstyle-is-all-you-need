@@ -149,18 +149,21 @@ async def query_stream(request: QueryRequest):
 
                 send_status("답변 정리 중...")
 
-                # 생성된 이미지 확인
+                # 생성된 이미지 확인 (세션별로 관리)
                 generated_image = None
-                if hasattr(agent, 'gen_flag') and agent.gen_flag and agent.current_image_base64:
-                    generated_image = f"data:image/jpeg;base64,{agent.current_image_base64}"
-                    agent.gen_flag = False
+                session_id = request.session_id
+                if hasattr(agent, 'session_gen_flags') and session_id in agent.session_gen_flags and agent.session_gen_flags[session_id]:
+                    if session_id in agent.session_images:
+                        generated_image = f"data:image/jpeg;base64,{agent.session_images[session_id]}"
+                        agent.session_gen_flags[session_id] = False
 
-                # 생성된 3D 모델(.ply) S3 직접 업로드
+                # 생성된 3D 모델(.ply) S3 직접 업로드 (세션별로 관리)
                 generated_3d_model = None
-                if hasattr(agent, 'current_3d_ply_path') and agent.current_3d_ply_path:
+                if hasattr(agent, 'session_3d_ply_paths') and session_id in agent.session_3d_ply_paths and agent.session_3d_ply_paths[session_id]:
                     try:
                         import os
-                        if os.path.exists(agent.current_3d_ply_path):
+                        ply_path = agent.session_3d_ply_paths[session_id]
+                        if os.path.exists(ply_path):
                             send_status("3D 모델을 S3에 업로드 중...")
 
                             # user_id 추출 (session_id에서)
@@ -171,14 +174,14 @@ async def query_stream(request: QueryRequest):
                             s3_key = f"gallery/ply/{ply_filename}"
 
                             # 파일 크기 확인
-                            file_size = os.path.getsize(agent.current_3d_ply_path)
+                            file_size = os.path.getsize(ply_path)
                             file_size_mb = file_size / 1024 / 1024
 
                             print(f"PLY 파일 S3 업로드 시작: {s3_key} ({file_size_mb:.2f} MB)")
                             start_upload = time.time()
 
                             # S3에 직접 업로드
-                            with open(agent.current_3d_ply_path, 'rb') as f:
+                            with open(ply_path, 'rb') as f:
                                 s3_client.upload_fileobj(
                                     f,
                                     AWS_STORAGE_BUCKET_NAME,
@@ -191,7 +194,7 @@ async def query_stream(request: QueryRequest):
 
                             # Django로는 S3 경로만 전송 (매우 가볍습니다!)
                             generated_3d_model = s3_key
-                            agent.current_3d_ply_path = None
+                            agent.session_3d_ply_paths[session_id] = None
                     except Exception as e:
                         print(f"3D 모델 파일 S3 업로드 실패: {e}")
                         send_status(f"3D 모델 업로드 실패: {str(e)}")
@@ -262,14 +265,16 @@ async def query_llm(request: QueryRequest):
         config={"configurable": {"session_id": request.session_id}}
     )
 
-    # 생성된 이미지가 있는지 확인
+    # 생성된 이미지가 있는지 확인 (세션별로 관리)
     generated_image = None
-    if hasattr(agent, 'gen_flag') and agent.gen_flag and agent.current_image_base64:
-        # 이미지 생성이 완료된 경우
-        generated_image = f"data:image/jpeg;base64,{agent.current_image_base64}"
-        print(f"생성된 이미지를 응답에 포함 (크기: {len(generated_image)} bytes)")
-        # 플래그 리셋
-        agent.gen_flag = False
+    session_id = request.session_id
+    if hasattr(agent, 'session_gen_flags') and session_id in agent.session_gen_flags and agent.session_gen_flags[session_id]:
+        if session_id in agent.session_images:
+            # 이미지 생성이 완료된 경우
+            generated_image = f"data:image/jpeg;base64,{agent.session_images[session_id]}"
+            print(f"생성된 이미지를 응답에 포함 (크기: {len(generated_image)} bytes)")
+            # 플래그 리셋
+            agent.session_gen_flags[session_id] = False
 
     return QueryResponse(
         output=response["output"],
