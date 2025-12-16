@@ -7,6 +7,7 @@ from langchain_classic.agents import AgentExecutor,create_openai_tools_agent
 from model.model_load import load_openai
 from model.tools import hairstyle_recommendation, hairstyle_generation, get_tool_list, non_image_recommendation, hairstyle_recommendation_nano
 from langchain_community.tools import DuckDuckGoSearchRun
+from duckduckgo_search import DDGS
 from model.cache_manager import cache_manager
 import base64
 from .system_prompt import sys_prompt
@@ -133,6 +134,7 @@ prompt = ChatPromptTemplate.from_messages(
            (2) 이미지에 사람 얼굴이 없는 경우, "얼굴이 포함된 이미지를 첨부하셔야 이미지를 만들 수 있습니다🥲 확인 후 다른 사진을 업로드해주세요."라고 응답 후 마무리
            (3) 이미지에 사람이 여러명이 있는 경우, "이 이미지에는 2 명 이상의 얼굴이 포함되어 있습니다🥲 한 명만 나온 이미지를 업로드 해주세요."라고 응답 후 마무리
            (4) 도구를 호출해서 반환값을 받았으나, 반환값으로 "ERROR"를 받은 경우, "이 이미지에는 2 명이상의 얼굴이 포함되어 있거나 얼굴을 인식할 수 없습니다🥲 한 명만 나온 얼굴이 잘 보이는 이미지를 업로드 해주세요."라고 응답 후 마무리
+           (5) 이미지에 사람이 1명 있는데 측면만 보이는 사진인 경우이거나 정면을 응시하지 않는 경우, "이미지 속 인물이 정면을 응시하지 않고 있거나 얼굴이 측면으로 보이고 있습니다🥲 정면을 응시하는 얼굴이 잘 보이는 이미지를 업로드 해주세요."라고 응답 후 마무리
 
            **유의사항**
            - 답변은 반드시 한국어로 하고 도구라는 말은 절대 하지 말 것
@@ -181,7 +183,7 @@ prompt = ChatPromptTemplate.from_messages(
            4. "제가 분석한 내용은 여기까지입니다. 얼굴형과 퍼스널컬러는 사진의 각도나 빛에 따라 달라질 수 있으니 참고해주시면 감사하겠습니다. 또 다른 질문이 있으신가요?😊"로 마무리
 
             [4. 헤어스타일/헤어컬러 변경(이미지 생성) 요청]
-            - 사용자가 이미지를 업로드하고 헤어스타일 “생성”을 요청하면 hairstyle_generation_tool() 도구 호출
+            - 사용자가 이미지를 업로드하고 헤어스타일 "생성"을 요청하면 hairstyle_generation_tool() 도구 호출
 
             **기본 플로우**
             1. 업로드된 이미지가 있는지 확인
@@ -189,22 +191,46 @@ prompt = ChatPromptTemplate.from_messages(
             3. 사람 얼굴이 있는 경우, 사람이 몇 명 있나 확인
             4. 사람이 1명 있을 경우, 사용자 질의에서 스타일/컬러 추출하고 옵션과 매칭해 hairstyle_generation_tool 도구 호출
 
+            **매우 중요 - 이전 설정 유지 규칙**
+            - 사용자가 "컬러만 바꿔줘", "스타일은 그대로고 색만 바꿔줘" 같은 **부분 변경 요청**을 하면,
+              반드시 이전 대화 기록(chat_history)에서 마지막으로 사용된 hairstyle, haircolor, hairlength 값을 확인하고,
+              새로운 파라미터와 **합쳐서** tool을 호출해야 합니다. 이는 색 뿐만 아니라 다른 속성(스타일, 기장)에도 동일하게 적용됩니다.
+               
+
+            **예시**
+            - 이전 호출: hairstyle_generation_tool(hairstyle='히피펌')
+            - 새 요청: "그럼 컬러는 애쉬블루로 바꿔줄래?"
+            - 올바른 호출: hairstyle_generation_tool(hairstyle='히피펌', haircolor='애쉬블루')  ← 둘 다 포함!
+            - 잘못된 호출: hairstyle_generation_tool(haircolor='애쉬블루')  ← hairstyle 누락! 절대 이렇게 하지 말 것!
+
+            - 이전 호출: hairstyle_generation_tool(hairstyle='히피펌', haircolor='애쉬블루')
+            - 새 요청: "이번엔 보브컷으로 해줘"
+            - 올바른 호출: hairstyle_generation_tool(hairstyle='보브컷', haircolor='애쉬블루')  ← 컬러 유지!
+
+            - 새 이미지가 업로드된 경우에만 이전 설정을 초기화하고 처음부터 다시 시작합니다.
+
            **예외 상황**
            - 답변은 반드시 한국어로 하고 도구라는 말은 절대 하지 말 것
            (1) 업로드된 이미지가 없는 경우, "업로드된 이미지가 없습니다🥲 이미지를 업로드하신 후 다시 시도해주세요."로 마무리
            (2) 이미지에 사람 얼굴이 없는 경우, "얼굴이 포함된 이미지를 첨부하셔야 이미지를 만들 수 있습니다🥲 확인 후 다른 사진을 업로드해주세요."로 마무리
            (3) 이미지에 사람이 여러명이 있는 경우, "이 이미지에는 2 명 이상의 얼굴이 포함되어 있습니다🥲 한 명만 나온 이미지를 업로드 해주세요."로 마무리         
-           (4) 스타일이나 컬러가 지원되는 스타일/컬러 목록에 없는 경우, "죄송합니다🥲 요청하신 헤어스타일/컬러는 현재 지원되지 않습니다. 아래 옵션 목록에서 선택해 다시 시도해주세요."라고 응답 후 지원가능한 옵션 목록을 제시하며 마무리
+           (4) 사람이 1명 있더라도 측면만 보이거나 얼굴이 정면으로 나오지 않은 경우, "얼굴이 정면으로 나온 이미지를 첨부하셔야 이미지를 만들 수 있습니다🥲 확인 후 다른 사진을 업로드해주세요."라고 응답 후 마무리
+           (5) 사용자가 직접 이 이미지를 참고해서 이미지를 생성해달라고 하는 경우, "죄송합니다🥲 현재는 업로드된 이미지를 참고하여 스타일링을 적용하는 기능은 지원되지 않습니다. 아래 옵션 목록에서 선택해 다시 시도해주세요."라고 응답 후 지원가능한 옵션 목록을 제시하며 마무리
+           (6) 이 이미지에 있는 헤어스타일이 무엇인지 알려달라고 하는 경우, "죄송하지만 해당 기능은 아직 개발중이라 지금은 지원되지 않습니다🥲 얼른 배워서 답변드릴게요..!또 다른 질문 있으신가요?"라고 응답 후 마무리
 
+           
            **유의사항**
            - 답변은 반드시 한국어로 하고 도구라는 말은 절대 하지 말 것
+           - 답변 마무리할 때, 다른 기장을 시도해볼 수 있다는 말과 다른 헤어스타일, 다른 헤어컬러를 원하면 말해달라는 말만으로 마무리
+              → 앞머리 변경 등 현재 tool에서 지원하지 않는 기능에 대한 언급은 절대 하지 말 것
+              (예) "더 밝은 머리로 염색해봐줘!" → 현재 색깔 변경은 지원되지만 밝기 조절 기능은 지원되지 않는다고 헤어스타일과 헤어컬러를 말하면 바꿔보겠다고 응답 후 마무리
            - 사용자 질의에 아래 목록에 있는 헤어스타일/컬러가 있는 경우, 해당 헤어스타일/컬러 추출해 도구에 전달 
               - 스타일/컬러 둘 다 있으면 둘 다 전달 → hairstyle_generation_tool(hairstyle=..., haircolor=...)
               - 스타일만 있으면 스타일만 전달 → hairstyle_generation_tool(hairstyle=...)
               - 컬러만 있으면 컬러만 전달 → hairstyle_generation_tool(haircolor=...)
               - 오타·띄어쓰기·유사 표현은 가능한 한 가장 가까운 옵션으로 매칭 (예: “리젠트 펌” → “리젠트펌”, “에쉬 블루” → “애쉬블루”)            
-            ex) 이 이미지에 히피펌을 적용해줄래? -> hairstyle_generation_tool(hairstyle="히피펌")
-            ex) 이 이미지에 애쉬그레이로 염색해줄래? -> hairstyle_generation_tool(haircolor="애쉬그레이")
+            ex) 이 이미지에 히피 펆을 적용해줄래? -> hairstyle_generation_tool(hairstyle="히피펌")
+            ex) 이 이미지에 애시 그래이로 염색해줄래? -> hairstyle_generation_tool(haircolor="애쉬그레이")
             - 도구 호출할 때 사용자 질의에 하고 싶은 헤어 기장에 관련된 키워드가 있는 경우, hairlength 파라미터로 전달 → hairstyle_generation_tool(hairlength=...)
                 hairlength 의 경우, 사용자의 묘사에 가장 잘 어울리는 카테고리를 선택하되 남자의 경우 숏, 미디엄, 장발 중에 하나를 선택하고 여자의 경우 숏, 단발, 중단발, 미디엄, 장발 중에 하나를 선택합니다.
                 각 카테고리에 대한 설명은 다음과 같습니다.
@@ -221,14 +247,6 @@ prompt = ChatPromptTemplate.from_messages(
                 미디엄: 어깨 아래~쇄골 길이. 세미 롱으로 자연스러운 웨이브·레이어드 가능.
                 장발: 쇄골 아래~가슴선 이상 길이. 긴머리 전반을 포함.
 
-            [사용 가능한 헤어스타일 / 헤어컬러 옵션 목록]
-            <헤어스타일>
-            남자 컷: 가일컷,댄디컷,드랍컷,리젠트컷,리프컷,버즈컷,슬릭백컷,아이브리그컷,울프컷,크롭컷,크루컷,투블럭컷,페이드컷,포마드컷,필러스컷,하이앤타이트컷,가르마펌
-            남자 펌: 가일펌,내추럴펌,댄디펌,리젠트펌,리프펌,베이비펌,볼륨펌,쉐도우펌,스왈로펌,애즈펌,웨이브펌,크리드펌,포마드펌,히피펌
-            여자 컷: 레이어드컷,리프컷,머쉬룸컷,뱅헤어,보브컷,샤기컷,원랭스컷,픽시컷,허쉬컷,히메컷
-            여자 펌: CS컬펌,C컬펌,S컬펌,글램펌,내츄럴펌,디지털펌,러블리펌,레이어드펌,루즈펌,리프펌,물결펌,믹스펌,바디펌,발롱펌,볼드펌,볼륨매직,볼륨펌,빌드펌,셋팅펌,스파이럴펌,에어펌,젤리펌,지젤펌,쿠션펌,텍스처펌,퍼피베이비펌,허쉬펌,히피펌
-            <헤어컬러>
-            골드브라운,다크브라운,레드브라운,레드와인,로즈골드,마르살라,마호가니,밀크브라운,베이지브라운,블루블랙,애쉬그레이,애쉬바이올렛,애쉬베이지,애쉬브라운,애쉬블론드,애쉬블루,애쉬카키,애쉬퍼플,오렌지브라운,올리브브라운,초코브라운,카키브라운,쿠퍼브라운,핑크브라운
             """,
         ),
         ("placeholder", "{chat_history}"),
@@ -320,15 +338,29 @@ class HairstyleAgent:
         @tool
         def web_search_tool(query: str) -> str:
             """
-            사용자가 얼굴형, 얼굴톤, 계절별 헤어스타일 추천 외의 요즘 유행하는 헤어스타일 같은 질의 시 해당 정보에 대해 웹 검색을 실행합니다.
+            사용자가 얼굴형, 얼굴톤, 계절별 헤어스타일 추천 외의 유행하는 헤어스타일 같은 질의 시 해당 정보에 대해 웹 검색을 실행합니다.
             결과는 항상 한국에서 나온 정보들만 사용합니다.
             지금은 2025년도 입니다.
             """
-            # return web_search(query)
 
+            # 텍스트 검색
             search = DuckDuckGoSearchRun()
-            res = search.run(query)
-            return res
+            text_result = search.run(query)
+
+            # 이미지 검색
+            try:
+                ddgs = DDGS()
+                image_results = ddgs.images(query, max_results=3)
+
+                if image_results:
+                    text_result += "\n\n**관련 이미지:**\n"
+                    for idx, img in enumerate(image_results, 1):
+                        text_result += f"\n![{img.get('title', '헤어스타일')}]({img['image']})"
+            except Exception as e:
+                print(f"[WARNING] 이미지 검색 실패: {e}")
+                # 이미지 검색 실패해도 텍스트 결과는 반환
+
+            return text_result
 
         
         tools = get_tool_list(hairstyle_recommendation_tool,non_image_recommendation_tool, hairstyle_generation_tool, web_search_tool)

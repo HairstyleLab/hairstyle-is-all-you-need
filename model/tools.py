@@ -18,6 +18,8 @@ from model.utility.superresolution import get_high_resolution
 from model.utility.white_balance import grayworld_white_balance
 from model.utility.face_swap import face_swap
 from model.cache_manager import cache_manager
+from ddgs import DDGS
+import requests
 import warnings
 warnings.filterwarnings(action='ignore')
 
@@ -466,10 +468,27 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, hairlengt
                 else:
                     # 지원 기장 정보가 없는 경우 기본 경로 사용
                     hairstyle_img_path = f"{base_path}/{hairstyle}.jpg"
+            
+            else:
+                if status_callback:
+                    status_callback(f"{hairstyle} 스타일을 검색하는 중입니다...")
+                
+                verified_path = search_images(hairstyle=hairstyle, face_cropper=face_cropper,)
+                if verified_path:
+                    hairstyle_img_path = verified_path
+                    # result_text = f"{hairstyle}에 대한 검색으로 이미지를 불러왔습니다."
 
         if haircolor:
             color_dict = reference.get("컬러", {})
             haircolor_path = color_dict.get(haircolor, None)
+
+            if not haircolor_path:
+                if status_callback:
+                    status_callback(f"{haircolor} 컬러를 검색하는 중입니다...")
+                
+                verified_path = search_images(hairstyle=haircolor, face_cropper=face_cropper, )
+                if verified_path:
+                    haircolor_path = verified_path
 
         if hairstyle_img_path and haircolor_path:
             prompt = """첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 바꾸고 세번째 이미지의 사람 헤어컬러를 적용해줘.
@@ -497,6 +516,9 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, hairlengt
                 f.write(swapped_face)
 
             ply_path = get_3d(image_file=f"{path}.jpg", input_dir=folder_path, models_3d=models_3d)
+        else:
+            return "이미지 생성에 실패했습니다."
+
 
         return (result_text if result_text else "이미지 생성 완료. 이제 답변을 생성하세요", swapped_face, ply_path)
 
@@ -507,6 +529,56 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, hairlengt
             os.unlink(processed_path)
         if 'temp_gen_path' in locals() and os.path.exists(temp_gen_path):
             os.unlink(temp_gen_path)
+
+def search_images(hairstyle, face_cropper, save_dir="tmp", max_tries=10):
+    os.makedirs(save_dir, exist_ok=True)
+    print('in search images, hairstyle: ', hairstyle)
+    if hairstyle:
+        search_query = hairstyle + " 정면 사진"
+    else:
+        return None
+
+    image_urls = []
+    try:
+        duck = DDGS()
+        results = duck.images(search_query, max_results=max_tries)
+        image_urls = [r['image'] for r in results]
+    except:
+        print("DDGS 검색 실패")
+        return None
+    
+    if not image_urls:
+        return None
+
+    for idx, url in enumerate(image_urls):
+        try:
+            response = requests.get(url, timeout=5)
+            if response.status_code != 200:
+                continue
+                
+            temp_filename = os.path.join(save_dir, f"{hairstyle.replace(' ', '_')}_{idx}.jpg")
+            with open(temp_filename, 'wb') as f:
+                f.write(response.content)
+
+            try:
+                detected_face = face_crop(image_file=temp_filename, face_cropper=face_cropper)
+                
+                if detected_face is not None:
+                    print(f"[INFO] 유효한 레퍼런스 이미지 확보 완료: {temp_filename}")
+                    return temp_filename
+                else:
+                    os.unlink(temp_filename)
+
+            except Exception:
+                if os.path.exists(temp_filename): os.unlink(temp_filename)
+                continue
+
+        except Exception as e:
+            continue
+            
+    print("[FAIL] 유효한 레퍼런스 이미지를 찾지 못했습니다.")
+    return None    
+
 
 def hairstyle_recommendation_nano(model, query, image_base64, hairstyle_keywords=None, haircolor_keywords=None, gender_keywords=None, faceshape_keywords=None, vectorstore=None):
     print('in recommendation tmp')
