@@ -150,17 +150,17 @@ async def query_stream(request: QueryRequest):
                 send_status("답변 정리 중...")
 
                 # 생성된 이미지 확인 (세션별로 관리)
-                generated_image = None
                 session_id = request.session_id
+                generated_image = None
+                generated_3d_model = None
                 if hasattr(agent, 'session_gen_flags') and session_id in agent.session_gen_flags and agent.session_gen_flags[session_id]:
                     if session_id in agent.session_images:
                         generated_image = f"data:image/jpeg;base64,{agent.session_images[session_id]}"
                         agent.session_gen_flags[session_id] = False
 
-                generated_3d_model = None
-                if hasattr(agent, 'current_3d_ply_path') and agent.current_3d_ply_path:
-                    generated_3d_model = agent.current_3d_ply_path
-                    agent.current_3d_ply_path = None
+                    if session_id in agent.session_3d_ply_paths:
+                        generated_3d_model = agent.session_3d_ply_paths[session_id]
+                        agent.session_3d_ply_paths[session_id] = None
 
                 queue.put({
                     "type": "response",
