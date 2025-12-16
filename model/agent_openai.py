@@ -114,7 +114,6 @@ prompt = ChatPromptTemplate.from_messages(
            - 얼굴형 설명에는 특정 커트를 언급하지 말고 지어내지말 것
            2. 퍼스널컬러가 있는 경우 퍼스널컬러도 언급할 것
            2. 도구가 준 값에 있는 헤어스타일이나 헤어컬러를 3가지씩 차례대로 친절하게 추천
-           - 헤어스타일과 헤어컬러는 옵션 목록에 있는 것들로만 구성
            - 헤어스타일이 있으면, 각 헤어스타일을 하면 어떤 느낌을 줄 수 있는지 사용자 질의와 연결되게 3문장 이내로 자세히 설명 
            - 헤어컬러가 있으면, 각 헤어컬러로 염색하면 어떤 느낌이 나는지 특징에 대해 사용자 질의와 연결되게 3문장 이내로 자세히 설명
            (예) "**레이어드컷** : 레이어드컷은 층을 내어 가벼운 느낌을 줄 수 있는 머리입니다..."
@@ -266,9 +265,12 @@ class HairstyleAgent:
         self.face_cropper = face_cropper
         self.models_3d = models_3d
         self.last_inputs = None
-        self.current_image_base64 = None  # 인스턴스별 이미지 저장
-        self.current_3d_ply_path = None   # 3D .ply 파일 경로 저장
-        self.gen_flag = False             # 이미지 생성했는지 여부
+
+        # 세션별 이미지 저장소
+        self.session_images = {}  # {session_id: image_base64}
+        self.session_3d_ply_paths = {}  # {session_id: ply_path}
+        self.session_gen_flags = {}  # {session_id: bool}
+
         self.status_callback = None
 
         self.agent = self._build_agent()
@@ -277,18 +279,20 @@ class HairstyleAgent:
         """내부 agent 생성"""
 
         llm = load_openai(model_name="gpt-5.2-chat-latest",temperature=1)
-        # Tool 정의 - self.current_image_base64 사용
+        # Tool 정의 - 세션별 이미지 사용
         @tool
         def hairstyle_recommendation_tool(faceshape_keywords=None, gender_keywords=None, personalcolor_keywords=None, season=None, hairstyle_keywords=None, haircolor_keywords=None, hairlength_keywords=None, query=None):
             """
             사용자의 요청에 따라 어울리는 헤어스타일 또는 헤어컬러를 찾아서 알려줍니다.
             query는 사용자의 full query를 전달합니다.
             """
-            if self.current_image_base64 is None:
+            session_id = getattr(self, '_current_session_id', None)
+            current_image = self.session_images.get(session_id) if session_id else None
+            if current_image is None:
                 return "오류: 이미지가 제공되지 않았습니다."
-            print(f"[INFO] Tool 실행: Base64 길이 = {len(self.current_image_base64)}")
-            result = hairstyle_recommendation(self.model, self.current_image_base64, faceshape_keywords, gender_keywords, personalcolor_keywords, season, hairstyle_keywords, haircolor_keywords, hairlength_keywords, self.vectorstore, status_callback=self.status_callback) 
-            
+            print(f"[INFO] Tool 실행 (세션 {session_id}): Base64 길이 = {len(current_image)}")
+            result = hairstyle_recommendation(self.model, current_image, faceshape_keywords, gender_keywords, personalcolor_keywords, season, hairstyle_keywords, haircolor_keywords, hairlength_keywords, self.vectorstore, status_callback=self.status_callback)
+
             return result
 
         @tool
@@ -308,12 +312,14 @@ class HairstyleAgent:
             사용자의 요청에 따라 업로드된 이미지에 합성된 헤어스타일 또는 헤어컬러 이미지를 생성합니다.
             사용자가 제공한 기본 이미지 위에 원하는 헤어스타일과 헤어컬러를 합성합니다.
             """
-            if self.current_image_base64 is None:
+            session_id = getattr(self, '_current_session_id', None)
+            current_image = self.session_images.get(session_id) if session_id else None
+            if current_image is None:
                 return "오류: 이미지가 제공되지 않았습니다."
-            print(f"[INFO] Tool 실행: Base64 길이 = {len(self.current_image_base64)}")
+            print(f"[INFO] Tool 실행 (세션 {session_id}): Base64 길이 = {len(current_image)}")
 
             res = hairstyle_generation(
-                self.current_image_base64,
+                current_image,
                 hairstyle,
                 haircolor,
                 hairlength,
@@ -327,9 +333,10 @@ class HairstyleAgent:
             # 튜플 반환: (result_text, image_bytes, ply_path) - 정상 생성
             # 문자열 반환: 오류 메시지 (예: 다수 얼굴 감지)
             if isinstance(res, tuple):
-                self.gen_flag = True
-                self.current_image_base64 = base64.b64encode(res[1]).decode('utf-8')
-                self.current_3d_ply_path = res[2] if len(res) > 2 else None
+                if session_id:
+                    self.session_gen_flags[session_id] = True
+                    self.session_images[session_id] = base64.b64encode(res[1]).decode('utf-8')
+                    self.session_3d_ply_paths[session_id] = res[2] if len(res) > 2 else None
                 return res[0]
             else:
                 # 문자열 오류 메시지 반환
@@ -405,6 +412,14 @@ class HairstyleAgent:
         # 캐시 상태 초기화
         cache_manager.reset_state()
 
+        # 세션 ID 추출
+        session_id = None
+        if config and isinstance(config, dict):
+            session_id = config.get('configurable', {}).get('session_id')
+
+        # 현재 세션 ID를 인스턴스 변수로 저장 (tool에서 접근 가능하도록)
+        self._current_session_id = session_id
+
         # 입력에서 이미지 추출
         if 'input' in inputs:
             messages = inputs['input']
@@ -414,12 +429,14 @@ class HairstyleAgent:
                     if any(isinstance(content, dict) and content.get('type') == 'image_url' for content in msg.content):
                         for content in msg.content:
                             if isinstance(content, dict) and content.get('type') == 'image_url':
-                                self.current_image_base64 = content['image_url']['url']
-                                print(f"[INFO] 이미지 감지! Base64 길이: {len(self.current_image_base64)}")
+                                image_base64 = content['image_url']['url']
+                                if session_id:
+                                    self.session_images[session_id] = image_base64
+                                    print(f"[INFO] 이미지 감지! (세션 {session_id}) Base64 길이: {len(image_base64)}")
                                 break
                     else:
-                        if self.current_image_base64 is not None:
-                            print(f"[INFO] 이전 이미지 유지! Base64 길이: {len(self.current_image_base64)}")
+                        if session_id and session_id in self.session_images:
+                            print(f"[INFO] 이전 이미지 유지! (세션 {session_id}) Base64 길이: {len(self.session_images[session_id])}")
 
         # Agent 실행
         result = self.agent.invoke(inputs, config, **kwargs)

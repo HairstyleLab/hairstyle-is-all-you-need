@@ -149,11 +149,13 @@ async def query_stream(request: QueryRequest):
 
                 send_status("답변 정리 중...")
 
-                # 생성된 이미지 확인
+                # 생성된 이미지 확인 (세션별로 관리)
                 generated_image = None
-                if hasattr(agent, 'gen_flag') and agent.gen_flag and agent.current_image_base64:
-                    generated_image = f"data:image/jpeg;base64,{agent.current_image_base64}"
-                    agent.gen_flag = False
+                session_id = request.session_id
+                if hasattr(agent, 'session_gen_flags') and session_id in agent.session_gen_flags and agent.session_gen_flags[session_id]:
+                    if session_id in agent.session_images:
+                        generated_image = f"data:image/jpeg;base64,{agent.session_images[session_id]}"
+                        agent.session_gen_flags[session_id] = False
 
                 generated_3d_model = None
                 if hasattr(agent, 'current_3d_ply_path') and agent.current_3d_ply_path:
@@ -225,14 +227,16 @@ async def query_llm(request: QueryRequest):
         config={"configurable": {"session_id": request.session_id}}
     )
 
-    # 생성된 이미지가 있는지 확인
+    # 생성된 이미지가 있는지 확인 (세션별로 관리)
     generated_image = None
-    if hasattr(agent, 'gen_flag') and agent.gen_flag and agent.current_image_base64:
-        # 이미지 생성이 완료된 경우
-        generated_image = f"data:image/jpeg;base64,{agent.current_image_base64}"
-        print(f"생성된 이미지를 응답에 포함 (크기: {len(generated_image)} bytes)")
-        # 플래그 리셋
-        agent.gen_flag = False
+    session_id = request.session_id
+    if hasattr(agent, 'session_gen_flags') and session_id in agent.session_gen_flags and agent.session_gen_flags[session_id]:
+        if session_id in agent.session_images:
+            # 이미지 생성이 완료된 경우
+            generated_image = f"data:image/jpeg;base64,{agent.session_images[session_id]}"
+            print(f"생성된 이미지를 응답에 포함 (크기: {len(generated_image)} bytes)")
+            # 플래그 리셋
+            agent.session_gen_flags[session_id] = False
 
     return QueryResponse(
         output=response["output"],
