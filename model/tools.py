@@ -19,11 +19,40 @@ from model.utility.white_balance import grayworld_white_balance
 from model.utility.face_swap import face_swap
 from model.cache_manager import cache_manager
 from ddgs import DDGS
-import requests
-import warnings
+import requests, warnings, threading
+from functools import wraps
+import uuid
+from datetime import datetime
+
+from dotenv import load_dotenv
+import boto3
+load_dotenv()
+
+s3_client = boto3.client(
+    's3',
+    aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+    aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+    region_name=os.getenv('AWS_S3_REGION_NAME', 'ap-northeast-2')
+)
+AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME')
+
+MAX_CONCURRENT_JOBS = 5
+GPU_SEMAPHORE = threading.Semaphore(MAX_CONCURRENT_JOBS)
+
 warnings.filterwarnings(action='ignore')
 
 reranker = load_reranker_model("Dongjin-kr/ko-reranker", "cuda")
+
+def gpu_bound_task(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        with GPU_SEMAPHORE:
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                print("Error in gpu task")
+                raise e
+    return wrapper
 
 def skin_tone_choice(result):
     dominant_result = tuple(int(result['faces'][0]['dominant_colors'][0]['color'].lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
@@ -359,7 +388,42 @@ def hairstyle_recommendation(model, image_base64, faceshape_keywords=None, gende
     finally:
         os.unlink(temp_path)
 
+@gpu_bound_task  # 얘도 GPU 써야 하니까 Lock 필수!
+def run_3d_task_background(image_filename, folder_path, models_3d, s3_key_to_upload):
+    print(f"[Background] 3D 작업 시작. 대상: {image_filename}")
+    print(f"[Background] 완료 후 업로드 예정 경로: {s3_key_to_upload}")
+    
+    try:
+        ply_local_path = get_3d(
+            image_file=image_filename, 
+            input_dir=folder_path, 
+            models_3d=models_3d
+        )
+        
+        if ply_local_path and os.path.exists(ply_local_path):
+            file_size_mb = os.path.getsize(ply_local_path) / (1024 * 1024)
+            
+            with open(ply_local_path, 'rb') as f:
+                s3_client.upload_fileobj(
+                    f,
+                    AWS_STORAGE_BUCKET_NAME,
+                    s3_key_to_upload,
+                    ExtraArgs={'ContentType': 'model/ply'}
+                )
+            
+            print(f"[Background] S3 업로드 성공! 로직 종료.")
+            
+            # (선택) 로컬에 남은 ply 파일 삭제
+            # os.remove(ply_local_path)
+            
+        else:
+            print("[Background] 오류: 생성된 ply 파일을 찾을 수 없습니다.")
 
+    except Exception as e:
+        print(f"[Background] 작업 중 에러 발생: {e}")
+
+
+# @gpu_bound_task
 def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, hairlength=None, client=None, status_callback=None,
                           safmn_model=None, face_cropper=None, models_3d=None):
     """
@@ -511,24 +575,38 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, hairlengt
             swapped_face = face_swap(processed_path, temp_gen_path)
 
             folder_path = "./results"
-            path = len([file for file in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, file))])
-            with open(f"results/{path}.jpg", "wb") as f:
+            os.makedirs(folder_path, exist_ok=True)
+            
+            saved_image_name = f"generated_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.jpg"
+            saved_full_path = os.path.join(folder_path, saved_image_name)
+
+            with open(saved_full_path, "wb") as f:
                 f.write(swapped_face)
+            
+            print(f"[Tool] 2D 이미지 저장 완료: {saved_full_path}")
 
-            ply_path = get_3d(image_file=f"{path}.jpg", input_dir=folder_path, models_3d=models_3d)
+            ply_filename = f"{saved_image_name.split('.')[0]}.ply"
+            s3_key = f"gallery/ply/{ply_filename}"
+
+            t = threading.Thread(
+                target=run_3d_task_background,
+                args=(saved_image_name, folder_path, models_3d, s3_key),
+                daemon=True
+            )
+            t.start()
+
+            # model_serve.py로 리턴 (경로는 agent 객체에 넣었으니 여긴 2D 관련만 리턴해도 됨)
+            # 혹은 필요하다면 튜플 끝에 s3_key를 추가해서 리턴해도 됩니다.
+            return (result_text, swapped_face, s3_key)
+
         else:
-            return "이미지 생성에 실패했습니다."
-
-
-        return (result_text if result_text else "이미지 생성 완료. 이제 답변을 생성하세요", swapped_face, ply_path)
+            return "이미지 생성 실패"
 
     finally:
-        if os.path.exists(temp_path):
-            os.unlink(temp_path)
-        if 'processed_path' in locals() and os.path.exists(processed_path):
-            os.unlink(processed_path)
-        if 'temp_gen_path' in locals() and os.path.exists(temp_gen_path):
-            os.unlink(temp_gen_path)
+        if os.path.exists(temp_path): os.unlink(temp_path)
+        if processed_path and os.path.exists(processed_path): os.unlink(processed_path)
+        if temp_gen_path and os.path.exists(temp_gen_path): os.unlink(temp_gen_path)
+
 
 def search_images(hairstyle, face_cropper, save_dir="tmp", max_tries=10):
     os.makedirs(save_dir, exist_ok=True)

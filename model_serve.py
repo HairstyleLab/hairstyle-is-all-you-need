@@ -27,13 +27,13 @@ from rag.retrieval import load_retriever
 load_dotenv()
 
 # S3 클라이언트 설정
-s3_client = boto3.client(
-    's3',
-    aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-    aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
-    region_name=os.getenv('AWS_S3_REGION_NAME', 'ap-northeast-2')
-)
-AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME')
+# s3_client = boto3.client(
+#     's3',
+#     aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+#     aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+#     region_name=os.getenv('AWS_S3_REGION_NAME', 'ap-northeast-2')
+# )
+# AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME')
 
 # 전역 변수 선언 (lifespan에서 초기화)
 agent = None
@@ -155,48 +155,11 @@ async def query_stream(request: QueryRequest):
                     generated_image = f"data:image/jpeg;base64,{agent.current_image_base64}"
                     agent.gen_flag = False
 
-                # 생성된 3D 모델(.ply) S3 직접 업로드
                 generated_3d_model = None
                 if hasattr(agent, 'current_3d_ply_path') and agent.current_3d_ply_path:
-                    try:
-                        import os
-                        if os.path.exists(agent.current_3d_ply_path):
-                            send_status("3D 모델을 S3에 업로드 중...")
+                    generated_3d_model = agent.current_3d_ply_path
+                    agent.current_3d_ply_path = None
 
-                            # user_id 추출 (session_id에서)
-                            user_id = request.session_id.split('_')[0] if '_' in request.session_id else request.session_id
-
-                            # S3에 업로드할 파일명 생성
-                            ply_filename = f"generated_{user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.ply"
-                            s3_key = f"gallery/ply/{ply_filename}"
-
-                            # 파일 크기 확인
-                            file_size = os.path.getsize(agent.current_3d_ply_path)
-                            file_size_mb = file_size / 1024 / 1024
-
-                            print(f"PLY 파일 S3 업로드 시작: {s3_key} ({file_size_mb:.2f} MB)")
-                            start_upload = time.time()
-
-                            # S3에 직접 업로드
-                            with open(agent.current_3d_ply_path, 'rb') as f:
-                                s3_client.upload_fileobj(
-                                    f,
-                                    AWS_STORAGE_BUCKET_NAME,
-                                    s3_key,
-                                    ExtraArgs={'ContentType': 'model/ply'}
-                                )
-
-                            elapsed = time.time() - start_upload
-                            print(f"PLY 파일 S3 업로드 완료: {s3_key} ({elapsed:.2f}초)")
-
-                            # Django로는 S3 경로만 전송 (매우 가볍습니다!)
-                            generated_3d_model = s3_key
-                            agent.current_3d_ply_path = None
-                    except Exception as e:
-                        print(f"3D 모델 파일 S3 업로드 실패: {e}")
-                        send_status(f"3D 모델 업로드 실패: {str(e)}")
-
-                # 최종 응답 전송
                 queue.put({
                     "type": "response",
                     "output": response["output"],
