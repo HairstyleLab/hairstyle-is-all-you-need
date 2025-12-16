@@ -20,6 +20,8 @@ from model.utility.face_swap import face_swap
 from model.cache_manager import cache_manager
 from ddgs import DDGS
 import requests
+import warnings
+warnings.filterwarnings(action='ignore')
 
 reranker = load_reranker_model("Dongjin-kr/ko-reranker", "cuda")
 
@@ -513,11 +515,12 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, hairlengt
             with open(f"results/{path}.jpg", "wb") as f:
                 f.write(swapped_face)
 
-            get_3d(image_file=f"{path}.jpg", input_dir=folder_path, models_3d=models_3d)
+            ply_path = get_3d(image_file=f"{path}.jpg", input_dir=folder_path, models_3d=models_3d)
         else:
             return "이미지 생성에 실패했습니다."
 
-        return (result_text if result_text else "이미지 생성 완료. 이제 답변을 생성하세요", swapped_face)
+
+        return (result_text if result_text else "이미지 생성 완료. 이제 답변을 생성하세요", swapped_face, ply_path)
 
     finally:
         if os.path.exists(temp_path):
