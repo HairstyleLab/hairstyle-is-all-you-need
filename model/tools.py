@@ -43,6 +43,26 @@ warnings.filterwarnings(action='ignore')
 
 reranker = load_reranker_model("Dongjin-kr/ko-reranker", "cuda")
 
+def find_image_with_extension(base_path, length, hairstyle):
+    supported_extensions = ['.jpg', '.jpeg', '.png', '.webp', '.JPG', '.JPEG', '.PNG', '.WEBP']
+
+    if length:
+        # 기장이 있는 경우: base_path/length/hairstyle.{ext}
+        for ext in supported_extensions:
+            img_path = f"{base_path}/{length}/{hairstyle}{ext}"
+            if os.path.exists(img_path):
+                return img_path
+        # 파일을 못 찾으면 기본 .jpg 경로 반환
+        return f"{base_path}/{length}/{hairstyle}.jpg"
+    else:
+        # 기장이 없는 경우: base_path/hairstyle.{ext}
+        for ext in supported_extensions:
+            img_path = f"{base_path}/{hairstyle}{ext}"
+            if os.path.exists(img_path):
+                return img_path
+        # 파일을 못 찾으면 기본 .jpg 경로 반환
+        return f"{base_path}/{hairstyle}.jpg"
+
 def gpu_bound_task(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
@@ -518,20 +538,20 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, hairlengt
                                 selected_length = supported_lengths[1]  # 가운데 두 번째
                             else:  # 4개 이상
                                 selected_length = supported_lengths[2]  # 세 번째
-                            hairstyle_img_path = f"{base_path}/{selected_length}/{hairstyle}.jpg"
+                            hairstyle_img_path = find_image_with_extension(base_path, selected_length, hairstyle)
 
                             result_text = ""
                         else:
-                            hairstyle_img_path = f"{base_path}/{hairlength}/{hairstyle}.jpg"
+                            hairstyle_img_path = find_image_with_extension(base_path, hairlength, hairstyle)
                             result_text = f"요청하신 기장은 {hairlength} 기장에 해당합니다. {hairstyle}의 {hairlength} 기장으로 합성한 이미지가 생성되었습니다."
                     else:
                         # 가장 가까운 기장 찾기
                         current_list, closest_length = search_close_length_category_from_list(supported_lengths, hairlength)
-                        hairstyle_img_path = f"{base_path}/{closest_length}/{hairstyle}.jpg"
+                        hairstyle_img_path = find_image_with_extension(base_path, closest_length, hairstyle)
                         result_text = f"현재 {hairstyle}이 지원하는 기장은 {current_list} 입니다. 사용자의 요청과 가까운 {closest_length} 기장의 {hairstyle}을 생성했습니다."
                 else:
                     # 지원 기장 정보가 없는 경우 기본 경로 사용
-                    hairstyle_img_path = f"{base_path}/{hairstyle}.jpg"
+                    hairstyle_img_path = find_image_with_extension(base_path, None, hairstyle)
             
             else:
                 if status_callback:
@@ -544,15 +564,20 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, hairlengt
 
         if haircolor:
             color_dict = reference.get("컬러", {})
-            haircolor_path = color_dict.get(haircolor, None)
+            color_base_path = color_dict.get(haircolor, None)
 
-            if not haircolor_path:
+            if color_base_path:
+                # base_path에서 name/name.확장자 형식으로 이미지 찾기
+                haircolor_path = find_image_with_extension(color_base_path, None, haircolor)
+            else:
                 if status_callback:
                     status_callback(f"{haircolor} 컬러를 검색하는 중입니다...")
-                
+
                 verified_path = search_images(hairstyle=haircolor, face_cropper=face_cropper, )
                 if verified_path:
                     haircolor_path = verified_path
+                else:
+                    haircolor_path = None
 
         if hairstyle_img_path and haircolor_path:
             prompt = """첫번째 이미지의 사람 헤어스타일을 두번째 이미지의 사람 헤어스타일로 바꾸고 세번째 이미지의 사람 헤어컬러를 적용해줘.
@@ -597,7 +622,7 @@ def hairstyle_generation(image_base64, hairstyle=None, haircolor=None, hairlengt
 
             # model_serve.py로 리턴 (경로는 agent 객체에 넣었으니 여긴 2D 관련만 리턴해도 됨)
             # 혹은 필요하다면 튜플 끝에 s3_key를 추가해서 리턴해도 됩니다.
-            return (result_text, swapped_face, s3_key)
+            return (result_text, image, s3_key)
 
         else:
             return "이미지 생성 실패"
@@ -795,9 +820,11 @@ def generate_image(client, prompt, image_path, shape_path=None, color_path=None)
     image_inputs = [img for img in image_inputs if img is not None]
 
     result = client.images.edit(
-        model="gpt-image-1",
+        model="gpt-image-1.5",
         image=image_inputs,
         prompt=prompt,
+        quality='high',
+        input_fidelity='high',
         size="1024x1024"
     )
 
@@ -854,6 +881,7 @@ def search_close_length_category_from_list(supported_lengths, length):
  
 
 def get_tool_list(*args):
-    tools = load_tools(['dalle-image-generator'])
+    # tools = load_tools(['dalle-image-generator'])
+    tools = []
     tools.extend(args)
     return tools
