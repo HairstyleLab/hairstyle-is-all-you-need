@@ -15,7 +15,7 @@ def main():
     OUTPUT_DIR = "./output"
 
     DOCS_PER_CATEGORY = 150
-    QUERIES_PER_DOC = 3
+    QUERIES_PER_DOC = 1
     AUTO_DETECT_CHUNKS = True
 
     SAVE_SEPARATE_FILES = True
